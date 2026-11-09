@@ -70,6 +70,17 @@ From live, read-only probing of the dev machine. Trust them over your priors.
    `uaccess`/POSIX ACL on the seat's devices (already true on the dev machine), `i2c` group
    membership, or a sudoers rule scoped to `/usr/bin/ddcutil`.
 
+   On the dev machine the ACL route is already satisfied and **no group change is needed** —
+   verified 2026-11-09: the user is not in `i2c`, yet `ddcutil --bus 16 getvcp 60` succeeds
+   unprivileged, because logind grants `user:devuser:rw-` to the holder of the local seat
+   (`Seat=seat0`, `Remote=no`).
+
+   That ACL follows the local seat, so it does **not** apply over SSH or to a systemd system
+   service. **Remote switching is explicitly out of scope** (user's decision, 2026-11-09): both
+   front-ends run in the graphical session on the local seat, so the seat-bound ACL is
+   sufficient and the `i2c` group is a documented fallback only. Do not add SSH or headless
+   support, or design for it, without asking.
+
 5. **`--display N` indices are not stable** across reboots or replugs. Resolve monitors fresh
    each run — by sysfs (preferred, fact 6) or `--mfg`/`--model`/`--sn`/`--bus`.
 
