@@ -211,14 +211,25 @@ Developed against:
 
 ## Status
 
-**Current:** documentation only. No code yet. The design is recorded as 13 ADRs, indexed in
+**Current:** `monswitch list` works. Everything shipped so far is read-only — no code in this
+repo can change a monitor's input yet, by design. The design is recorded as 13 ADRs, indexed in
 [`docs/adr/README.md`](docs/adr/README.md), with the domain vocabulary in
 [`docs/CONTEXT.md`](docs/CONTEXT.md) and the agent brief in
 [`docs/AGENTS.md`](docs/AGENTS.md).
 
+### Try it
+
+```bash
+python3 -m venv --system-site-packages .venv   # --system-site-packages keeps system `gi` visible
+.venv/bin/pip install -e .
+.venv/bin/monswitch list
+```
+
+Or without installing anything: `PYTHONPATH=src python3 -m monswitch.cli list`.
+
 ### Roadmap
 
-- [ ] `monswitch list` — detect monitors, print inputs, mark the active one
+- [x] `monswitch list` — detect monitors, print inputs, mark the active one
 - [ ] `monswitch set <input>` / `set <monitor> <input>` / `-m <monitor> set <input>` — the
       plumbing command. Arity decides: one positional is an input on the auto-targeted
       monitor, two are monitor then input

@@ -17,7 +17,16 @@ not just a physical DP cable.
 
 ## State as of 2026-11-09
 
-Documentation only. **No code has been written yet.**
+`monswitch list` works. Everything implemented so far is **read-only**: there is no `setvcp`
+call anywhere in the codebase, and the `ddcutil` wrapper deliberately exposes no method that
+could issue one. Tests assert that absence.
+
+Implemented: EDID parser, sysfs resolution, `ddcutil` parsers and wrapper, domain models with
+the provenance tiers and confirmation policy, the discovery merge, the config layer, and the
+`list` CLI. 244 tests, runnable without hardware.
+
+Not yet built: input resolution for `set`, the write path and its confirmation flow, `learn`,
+the GTK picker, the Ulauncher extension.
 
 Design is settled in [`adr/`](adr/) — 13 ADRs, indexed in [`adr/README.md`](adr/README.md).
 **Read the ADRs before coding**, 0009–0013 especially: they carry the safety-critical rules and
