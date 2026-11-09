@@ -1,0 +1,113 @@
+Model: Z38C
+MCCS version: 2.2
+Commands:
+   Op Code: 01 (VCP Request)
+   Op Code: 02 (VCP Response)
+   Op Code: 03 (VCP Set)
+   Op Code: 07 (Timing Request)
+   Op Code: 0C (Save Settings)
+   Op Code: E3 (Capabilities Reply)
+   Op Code: F3 (Capabilities Request)
+VCP Features:
+   Feature: 02 (New control value)
+   Feature: 04 (Restore factory defaults)
+   Feature: 05 (Restore factory brightness/contrast defaults)
+   Feature: 08 (Restore color defaults)
+   Feature: 0B (Color temperature increment)
+   Feature: 0C (Color temperature request)
+   Feature: 10 (Brightness)
+   Feature: 12 (Contrast)
+   Feature: 14 (Select color preset)
+      Values:
+         01: sRGB
+         04: 5000 K
+         05: 6500 K
+         08: 9300 K
+         0b: User 1
+   Feature: 16 (Video gain: Red)
+   Feature: 18 (Video gain: Green)
+   Feature: 1A (Video gain: Blue)
+   Feature: 2E (Gray scale expansion)
+      Values: 00 01 02 03 (interpretation unavailable)
+   Feature: 52 (Active control)
+   Feature: 60 (Input Source)
+      Values:
+         0f: DisplayPort-1
+         11: HDMI-1
+         1f: Unrecognized value
+   Feature: 6C (Video black level: Red)
+   Feature: 6E (Video black level: Green)
+   Feature: 70 (Video black level: Blue)
+   Feature: 86 (Display Scaling)
+      Values:
+         01: No scaling
+         02: Max image, no aspect ration distortion
+         05: Max vertical image with aspect ratio distortion
+   Feature: 87 (Sharpness)
+      Values: 01 02 03 04 05 06 07 (interpretation unavailable)
+   Feature: AC (Horizontal frequency)
+   Feature: AE (Vertical frequency)
+   Feature: B2 (Flat panel sub-pixel layout)
+   Feature: B6 (Display technology type)
+   Feature: C0 (Display usage time)
+   Feature: C6 (Application enable key)
+   Feature: C8 (Display controller type)
+   Feature: C9 (Display firmware level)
+   Feature: CA (OSD/Button Control)
+      Values:
+         01: OSD disabled, button events enabled
+         02: OSD enabled, button events enabled
+   Feature: CC (OSD Language)
+      Values:
+         01: Chinese (traditional, Hantai)
+         02: English
+         03: French
+         04: German
+         05: Italian
+         06: Japanese
+         08: Portuguese (Portugal)
+         0a: Spanish
+         0d: Chinese (simplified / Kantai)
+         14: Dutch
+   Feature: D6 (Power mode)
+      Values:
+         01: DPM: On,  DPMS: Off
+         02: DPM: Off, DPMS: Standby
+         03: DPM: Off, DPMS: Suspend
+         04: DPM: Off, DPMS: Off
+         05: Write only value to turn off display
+   Feature: DC (Display Mode)
+      Values:
+         02: Mixed
+         03: Movie
+         04: User defined
+         06: Sports
+         07: Professional (all signal processing disabled)
+         08: Standard/Default mode with intermediate power consumption
+         09: Standard/Default mode with low power consumption
+   Feature: DF (VCP Version)
+   Feature: E5 (Manufacturer specific feature)
+      Values: 01 02 FF (interpretation unavailable)
+   Feature: E6 (Manufacturer specific feature)
+      Values: 00 01 (interpretation unavailable)
+   Feature: E7 (Manufacturer specific feature)
+      Values: 00 01 (interpretation unavailable)
+   Feature: E9 (Manufacturer specific feature)
+      Values: 00 01 (interpretation unavailable)
+   Feature: EA (Manufacturer specific feature)
+      Values: 00 01 (interpretation unavailable)
+   Feature: EE (Manufacturer specific feature)
+      Values: 01 02 03 (interpretation unavailable)
+   Feature: EB (Manufacturer specific feature)
+      Values: 01 02 03 04 05 (interpretation unavailable)
+   Feature: EF (Manufacturer specific feature)
+      Values: 01 02 03 04 05 (interpretation unavailable)
+   Feature: F0 (Manufacturer specific feature)
+   Feature: FA (Manufacturer specific feature)
+      Values: 00 01 02 (interpretation unavailable)
+   Feature: FB (Manufacturer specific feature)
+   Feature: FC (Manufacturer specific feature)
+   Feature: FD (Manufacturer specific feature)
+   Feature: FE (Manufacturer specific feature)
+      Values: 00 01 02 04 (interpretation unavailable)
+   Feature: FF (Manufacturer specific feature)
