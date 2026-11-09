@@ -141,6 +141,21 @@ user-only (fact 3).
 - **Testing:** `pytest` over captured fixtures — EDID bytes, `detect --terse`, `getvcp 60` both
   terse and not, `capabilities`. The parsers are pure bytes/string-in, data-out and need no
   hardware. Never issue `setvcp` from a test.
+
+  Tests are written as `unittest.TestCase` classes, which pytest collects natively. This is
+  deliberate: PEP 668 (fact 8) means pytest may be absent, and the core is stdlib-only, so the
+  suite must be runnable with no dependencies at all.
+
+  ```bash
+  python3 -m venv --system-site-packages .venv   # --system-site-packages so `gi` stays visible
+  .venv/bin/pip install pytest
+  .venv/bin/python -m pytest tests/ -q           # with the dev venv
+  PYTHONPATH=src python3 -m unittest discover -s tests -t tests   # zero dependencies
+  ```
+
+  The venv is a **development** convenience only. It is never the runtime path: the Ulauncher
+  daemon runs the system interpreter and cannot see it, and the picker needs system `gi`
+  (ADR-0012). Do not add a venv to any install instructions.
 - **Documentation:** all docs, ADRs and specs under `./docs/`. ADR conventions in
   `docs/adr/README.md` — including that a superseded ADR keeps its original reasoning and gains
   a note, and that the status change is recorded in both files *and* the index.

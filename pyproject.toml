@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "monswitch"
+version = "0.0.0"
+description = "Switch an external monitor's input source over DDC/CI"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# The core is standard-library only, by design (ADR-0005). GTK comes from system
+# python3-gi and is deliberately NOT a dependency here (ADR-0012).
+dependencies = []
+
+[project.scripts]
+monswitch = "monswitch.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# This file exists so that `pipx install .` and `pip install --user .` work where the
+# environment permits them, but it is not the documented install path: ADR-0012 ships the
+# Ulauncher extension with its own sys.path wiring, because PEP 668 blocks pip on the
+# reference distribution and the Ulauncher daemon runs the system interpreter.
+
+[tool.pytest.ini_options]
+# src layout without an install step.
+pythonpath = ["src"]
+testpaths = ["tests"]
