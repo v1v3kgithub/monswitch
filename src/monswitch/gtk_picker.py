@@ -28,7 +28,13 @@ _IMPORT_ERROR: str | None = None
 try:  # pragma: no cover - depends on the machine, not on logic
     import gi
 
+    # Both namespaces must be pinned, not just Gtk. On a machine with GTK 3 and GTK 4
+    # installed side by side -- which Ubuntu is, by default -- an unversioned
+    # `from gi.repository import Gdk` resolves to the newest typelib it can find, loading
+    # Gdk 4.0; Gtk 3.0 then requires Gdk 3.0, finds 4.0 already loaded, and the import dies
+    # with "Requiring namespace 'Gdk' version '3.0', but '4.0' is already loaded".
     gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
     GTK_AVAILABLE = True
 except (ImportError, ValueError) as exc:  # pragma: no cover
     GTK_AVAILABLE = False
@@ -81,7 +87,10 @@ def run_picker(
             )
         )
 
-    from gi.repository import Gdk, Gtk  # noqa: PLC0415 - lazy by design
+    # Versions were pinned at module import; Gtk first so its own Gdk requirement is
+    # already satisfied by the pin rather than by whatever loads first.
+    from gi.repository import Gtk  # noqa: PLC0415 - lazy by design
+    from gi.repository import Gdk  # noqa: PLC0415 - lazy by design
 
     model = PickerModel(monitors, confirm_switch=config.confirm_switch)
     writer = ddcutil or WriteCapableDdcutil()
