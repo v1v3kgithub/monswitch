@@ -8,6 +8,11 @@ We decided on a serial-keyed nested dictionary schema:
 - Input mappings are declared as a flat dictionary of hex code to friendly name (`"0x13" = "Work Laptop"`).
 
 ### Example
+
+The serial below is illustrative. The reference HP Z38c's actual serial is `DEMOSERIAL`, read
+from the EDID `0xff` descriptor block and not from the EDID offset-12 serial field, which reads
+`0x01010101` on that panel (see ADR-0010).
+
 ```toml
 confirm_switch = true
 

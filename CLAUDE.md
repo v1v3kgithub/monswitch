@@ -70,8 +70,18 @@ These came out of live probing on the dev machine. Trust them over your priors.
 5. **`--display N` indices are not stable** across reboots or replugs. Resolve monitors by
    `--mfg`/`--model`/`--sn` or `--bus` fresh at each run.
 
-6. **`ddcutil detect` is slow** — it probes every I²C bus. Cache results; prefer an explicit
-   `--bus` on the write path.
+6. **`ddcutil detect` is slow** — it probes every I²C bus. Measured on the dev machine
+   (2026-11-09): `detect` 1.5 s, `--bus N getvcp 60` 0.35 s, `capabilities` 3.1 s, sysfs walk
+   0.02 s. Prefer an explicit `--bus` on the write path. **There is no `--nodetect` flag** in
+   `ddcutil` 1.4.1 — an earlier version of this file and of `README.md` recommended it;
+   it errors with `Unknown option --nodetect`.
+
+   Prefer sysfs over `detect` entirely on the read path: `/sys/class/drm/card*/card*-*/ddc`
+   is a symlink to the I²C adapter and the adjacent `edid`/`status` files identify and filter
+   the panel, at no I²C cost. Dev machine: `card1-DP-1 -> i2c-16`, EDID gives
+   `HPN` / `HP Z38c` / `DEMOSERIAL`. The real serial is in the `0xff` descriptor block; the
+   offset-12 serial field reads `0x01010101` and is useless. `detect` remains the fallback for
+   drivers without `ddc` links (NVIDIA proprietary). See ADR-0010.
 
 7. Laptop internal panels (`eDP-*`) have no DDC/CI input switching. Filter them out.
 

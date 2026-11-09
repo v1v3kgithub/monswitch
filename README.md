@@ -184,8 +184,15 @@ it.
 
 - `--display N` indices from `ddcutil detect` are not stable across reboots or replugs.
   Address monitors by `--mfg`/`--model`/`--sn` or by `--bus`, resolved fresh at each run.
-- `ddcutil detect` is slow (it probes every I²C bus). Cache results; use `--nodetect` or an
-  explicit `--bus` on the write path.
+- `ddcutil detect` is slow (it probes every I²C bus) — 1.5 s on the reference machine, against
+  0.35 s for a bus-direct `ddcutil --bus 16 getvcp 60` and 3.1 s for `capabilities`. Use an
+  explicit `--bus` on the write path. Note there is **no** `--nodetect` flag in `ddcutil` 1.4.1;
+  it fails with `Unknown option --nodetect`.
+- Better still, skip `ddcutil detect` on the read path entirely: the kernel already publishes
+  the mapping. `/sys/class/drm/card*/card*-*/ddc` symlinks each connected output to its I²C
+  adapter, and the adjacent `edid` file identifies the panel — the whole walk costs 0.02 s with
+  no I²C traffic. `ddcutil detect` is then only needed on drivers that do not expose `ddc`
+  (notably the NVIDIA proprietary driver). See `docs/adr/0010-sysfs-first-monitor-resolution.md`.
 - DDC/CI writes are fire-and-forget; the monitor may take a second or two to re-sync.
 - Laptop internal panels (`eDP-*`) have no DDC/CI input switching. Ignore them.
 
