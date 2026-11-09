@@ -369,27 +369,43 @@ class WriteSurfaceTest(CliTestCase):
         super().setUp()
         self.one_hp()
 
-    def test_set_without_dry_run_refuses_and_changes_nothing(self) -> None:
+    def test_unverified_switch_refuses_without_a_terminal(self) -> None:
+        """No tty means nothing can be asked, so the risky switch does not happen."""
         code, _, err = self.run_cli("set", "dp1", ddcutil=self.reference_ddcutil())
 
         self.assertEqual(code, EXIT_ERROR)
-        self.assertIn("not implemented yet", err)
-        self.assertIn("nothing was changed", err)
+        self.assertIn("inferred, not observed", err)
+        self.assertIn("refusing", err)
 
-    def test_no_ddcutil_command_ever_contains_setvcp(self) -> None:
-        """The guarantee that matters: no code path can issue a write."""
-        ddcutil = self.reference_ddcutil()
+    def test_refusal_names_the_flag_that_would_work(self) -> None:
+        """--yes does not cover an unverified input, so suggesting it would loop the user."""
+        _, _, err = self.run_cli("set", "dp1", ddcutil=self.reference_ddcutil())
 
-        self.run_cli("set", "dp1", ddcutil=ddcutil)
-        self.run_cli("set", "--dry-run", "dp1", ddcutil=ddcutil)
-        self.run_cli("list", ddcutil=ddcutil)
+        self.assertIn("--force", err)
+        self.assertNotIn("Pass --yes", err)
 
-        self.assertFalse(hasattr(ddcutil, "setvcp"))
+    def test_yes_does_not_cover_an_unverified_destination(self) -> None:
+        """ADR-0009: the opt-out covers daily-use inputs, not guessed codes."""
+        code, _, err = self.run_cli(
+            "set", "-y", "dp1", ddcutil=self.reference_ddcutil()
+        )
 
-    def test_core_wrapper_still_exposes_no_write_method(self) -> None:
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("--force", err)
+
+    def test_dry_run_says_it_changed_nothing(self) -> None:
+        code, out, _ = self.run_cli(
+            "set", "--dry-run", "dp1", ddcutil=self.reference_ddcutil()
+        )
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("nothing was changed", out)
+
+    def test_read_only_wrapper_still_exposes_no_write_method(self) -> None:
+        """The default Ddcutil must stay read-only; writing requires asking for the subclass."""
         from monswitch.core.ddc import Ddcutil
 
-        self.assertFalse([name for name in dir(Ddcutil) if "setvcp" in name.lower()])
+        self.assertFalse([name for name in dir(Ddcutil) if "set_input" in name])
 
 
 if __name__ == "__main__":

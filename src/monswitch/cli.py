@@ -3,8 +3,11 @@
 A thin presentation wrapper over ``monswitch.core``, per the unified-core convention: this
 module formats and prints, and makes no decisions the core could make instead.
 
-Currently implements ``monswitch list``. The write path (``set``) and the GTK picker are not
-here yet, deliberately — ``setvcp`` arrives with its confirmation flow, not before.
+Implements ``monswitch list`` and ``monswitch set``. The GTK picker is not here yet.
+
+``set`` can change hardware, so it goes through :func:`monswitch.core.switching.switch_input`
+rather than touching the write path itself: that is where the confirmation policy lives.
+``--dry-run`` resolves a target and reports the verdict without writing.
 
 Error handling follows ADR-0011: the core raises typed errors and returns warnings, and this
 module renders them. Nothing exits silently, and every failure says what to do about it.
@@ -19,7 +22,12 @@ from pathlib import Path
 from typing import TextIO
 
 from .core.config import Config, config_path, load_tolerant
-from .core.ddc import Ddcutil, DdcutilError, DdcutilNotInstalled
+from .core.ddc import (
+    Ddcutil,
+    DdcutilError,
+    DdcutilNotInstalled,
+    WriteCapableDdcutil,
+)
 from .core.discovery import Discovery, discover
 from .core.interaction import Choice, Declined, Prompting, Strict
 from .core.models import (
@@ -31,6 +39,7 @@ from .core.models import (
     switch_confirmation,
 )
 from .core.resolution import resolve_input
+from .core.switching import SwitchRefused, switch_input
 from .core.sysfs import DEFAULT_DRM_ROOT
 
 __all__ = ["main"]
@@ -143,7 +152,18 @@ def build_parser() -> argparse.ArgumentParser:
         "-y",
         "--yes",
         action="store_true",
-        help="do not ask for confirmation (ignored by --dry-run)",
+        help=(
+            "do not ask before switching away from this machine. Does not cover an "
+            "unverified input; confirm that input first, or use --force"
+        ),
+    )
+    setter.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "also skip the confirmation for an unverified input, which may not exist on "
+            "the monitor. Prefer confirming the input instead"
+        ),
     )
 
     return parser
@@ -506,14 +526,52 @@ def _run_set(
     print(f"  current input: {_describe_host(monitor)}", file=out)
     print(f"  verdict: {_describe_verdict(verdict)}", file=out)
 
-    if not args.dry_run:
-        print(
-            f"\n{PROGRAM}: switching is not implemented yet, so nothing was changed.\n"
-            "Re-run with --dry-run to resolve a target without this message.",
-            file=err,
+    if args.dry_run:
+        print("  (dry run: nothing was changed)", file=out)
+        return EXIT_OK
+
+    writer = (
+        ddcutil
+        if isinstance(ddcutil, WriteCapableDdcutil)
+        else WriteCapableDdcutil(
+            executable=ddcutil.executable if ddcutil else "ddcutil",
+            timeout=ddcutil.timeout if ddcutil else 10.0,
         )
+    )
+    strategy = Prompting() if sys.stdin.isatty() else Strict()
+
+    try:
+        outcome = switch_input(
+            monitor,
+            destination,
+            ddcutil=writer,
+            strategy=strategy,
+            confirm_switch=config.confirm_switch,
+            assume_yes=args.yes,
+            force=args.force,
+        )
+    except SwitchRefused as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
+        return EXIT_ERROR
+    except DdcutilError as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
         return EXIT_ERROR
 
+    if not outcome.changed:
+        print("  already on that input; nothing to do", file=out)
+        return EXIT_OK
+
+    if outcome.channel_lost:
+        # The DDC/CI channel went with the display link. Saying so is the honest report:
+        # there is nothing left to verify against (ADR-0011).
+        print(
+            f"  switched. This monitor is no longer showing this machine, so it can only "
+            f"be switched back from its own buttons or from whatever is on "
+            f"{destination.label}.",
+            file=out,
+        )
+    else:
+        print("  switched.", file=out)
     return EXIT_OK
 
 

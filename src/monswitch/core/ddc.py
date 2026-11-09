@@ -47,6 +47,8 @@ __all__ = [
     "INPUT_SOURCE_FEATURE",
     "NoMonitorOnBus",
     "Runner",
+    "SetvcpFailed",
+    "WriteCapableDdcutil",
     "parse_capabilities_inputs",
     "parse_detect",
     "parse_getvcp_input",
@@ -318,10 +320,10 @@ def _clean_mfg_id(raw: str) -> str | None:
 # Everything above is pure parsing. Everything below actually runs ddcutil.
 #
 # Read-only by construction: this wrapper exposes detect, capabilities and
-# getvcp, and has no setvcp method at all. That omission is deliberate and
-# load-bearing -- a write path that does not exist cannot be called by
-# accident, by a test, or by an agent. The write path arrives with the
-# confirmation flow, not before.
+# getvcp, and has no write method at all. That omission is deliberate and
+# load-bearing -- code holding a Ddcutil cannot change a monitor, by accident
+# or otherwise. Writing requires the WriteCapableDdcutil subclass at the foot
+# of this module, which has to be asked for by name.
 # ---------------------------------------------------------------------------
 
 
@@ -504,3 +506,75 @@ class Ddcutil:
         raise DdcutilFailed(
             f"{' '.join(result.argv)} exited {result.returncode}: {output.strip()}"
         )
+
+
+# ---------------------------------------------------------------------------
+# The write path
+#
+# Everything above this line is read-only. This is the only function in the
+# project that can change a monitor's state, and it is deliberately the last
+# thing added.
+#
+# It takes no decisions: whether a switch is allowed, and whether the user
+# agreed to it, are settled before anything calls this. See
+# monswitch.core.switching, which is the only intended caller.
+# ---------------------------------------------------------------------------
+
+
+class SetvcpFailed(DdcutilError):
+    """``setvcp`` was issued but ddcutil reported a failure.
+
+    The monitor may or may not have switched. Do not assume either way: a write that
+    succeeded and left the Host Input also destroys the channel that would be used to check
+    (ADR-0011).
+    """
+
+
+def _set_input_argv(executable: str, bus: int, code: int) -> tuple[str, ...]:
+    """Build the setvcp command line.
+
+    Separate from the call that runs it so tests can assert the exact argv without the risk
+    of a function that executes anything.
+    """
+    if not 0 <= code <= 0xFF:
+        raise ValueError(f"input code out of range: {code!r}")
+    return (executable, "--bus", str(bus), "setvcp", "60", f"0x{code:02x}")
+
+
+class WriteCapableDdcutil(Ddcutil):
+    """A :class:`Ddcutil` that can also write the Input Source feature.
+
+    Kept as a subclass so that the read-only :class:`Ddcutil` remains available and remains
+    the default everywhere. Code that only needs to read cannot gain the ability to write by
+    accident; it has to ask for this type by name.
+
+    **Callers must not use this directly.** Go through
+    :func:`monswitch.core.switching.switch_input`, which applies the confirmation policy.
+    Issuing ``setvcp 60`` without a human agreeing in the moment can leave a monitor showing
+    an input the user cannot get back from software.
+    """
+
+    def set_input(self, bus: int, code: int) -> None:
+        """Switch the monitor on ``bus`` to input ``code``.
+
+        DDC/CI writes are fire-and-forget and the monitor may take a second or two to
+        re-sync. This deliberately does **not** read the value back to confirm: if the switch
+        worked and it left the Host Input, the display link and the DDC/CI channel are gone,
+        so a failed read-back would be the expected outcome of success, not evidence of
+        failure.
+        """
+        argv = _set_input_argv(self.executable, bus, code)
+        result = self.runner(argv, self.timeout)
+        if result.returncode != 0:
+            output = result.output
+            lowered = output.lower()
+            if any(marker in lowered for marker in _PERMISSION_MARKERS):
+                raise I2cPermissionDenied(
+                    f"cannot write to the I2C device on bus {bus}: permission denied. "
+                    f"ddcutil said: {output.strip()}"
+                )
+            raise SetvcpFailed(
+                f"setting input 0x{code:02x} on bus {bus} failed: {output.strip()}. "
+                "The monitor may not have switched; run monswitch list to see its "
+                "current input"
+            )
