@@ -1,7 +1,9 @@
 # Packaging and Module Resolution for the Ulauncher Extension
 
-> Refines [ADR-0005](0005-direct-python-import-for-extension.md), which chose direct import but
-> did not say how the module becomes importable.
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Refines:** [ADR-0005](0005-direct-python-import-for-extension.md)
+
+> ADR-0005 chose direct import but did not say how the module becomes importable.
 
 ADR-0005 decided the Ulauncher extension imports the core directly
 (`from monswitch.core import ...`) rather than shelling out to the CLI, on the grounds that the

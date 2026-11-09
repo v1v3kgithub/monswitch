@@ -1,5 +1,8 @@
 # Auto-Targeting and Flat Badge Presentation
 
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Refined by:** [ADR-0013](0013-identity-host-input-and-target-resolution.md)
+
 Multi-monitor users need to select which monitor to switch, while single-monitor users find specifying the monitor on every command cumbersome. Additionally, launcher users benefit from fuzzy-searching both monitor and input in a single query.
 
 We decided to implement auto-targeting with flat badge presentation:

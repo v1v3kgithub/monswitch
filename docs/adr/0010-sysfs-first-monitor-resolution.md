@@ -1,7 +1,9 @@
 # sysfs-First Monitor Resolution
 
-> Supersedes the primary mechanism of
-> [ADR-0003](0003-optimistic-bus-caching.md); that ADR's bus cache is demoted to a fallback.
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Supersedes in part:** [ADR-0003](0003-optimistic-bus-caching.md)
+
+> ADR-0003's bus cache is demoted to a fallback: it applies only to the `ddcutil detect` path.
 
 ADR-0003 chose to persist monitor-serial-to-bus mappings in `~/.cache/monswitch/bus_cache.json`,
 addressing the cached bus directly and falling back to a full `ddcutil detect` when

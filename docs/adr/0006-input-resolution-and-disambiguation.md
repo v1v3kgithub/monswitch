@@ -1,8 +1,11 @@
 # Input Resolution and Disambiguation Strategy
 
-> Refined by [ADR-0011](0011-graphical-disambiguation-and-failure-surfacing.md). The
-> `isatty()` split below covers terminal contexts only; both graphical frontends are
-> non-interactive by that test and must not take the abort-to-stderr branch.
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Refined by:** [ADR-0011](0011-graphical-disambiguation-and-failure-surfacing.md)
+
+> The `isatty()` split below covers terminal contexts only; both graphical frontends are
+> non-interactive by that test and must not take the abort-to-stderr branch. ADR-0013 settles
+> how the *monitor* argument is supplied; this ADR governs the input argument only.
 
 When invoking `monswitch set <input>`, the target input can be specified in multiple formats: raw hexadecimal VCP codes (`0x0f`, `15`), normalized standard slugs (`dp`, `dp1`, `hdmi`, `usbc`), or custom nicknames defined in `~/.config/monswitch/config.toml`.
 

@@ -1,7 +1,9 @@
 # Optimistic I2C Bus Caching with Transparent Fallback
 
-> **Superseded in part by [ADR-0010](0010-sysfs-first-monitor-resolution.md).** The kernel
-> publishes the bus-to-monitor mapping for free via `/sys/class/drm/*/ddc`, so sysfs is now the
+> **Status:** Superseded in part · **Date:** 2026-11-09
+> **Superseded in part by:** [ADR-0010](0010-sysfs-first-monitor-resolution.md)
+
+> The kernel publishes the bus-to-monitor mapping for free via `/sys/class/drm/*/ddc`, so sysfs is now the
 > primary resolution path and this cache applies only to the `ddcutil detect` fallback. The
 > timings below were estimates; measured values are in ADR-0010 (`detect` 1.5 s, bus-direct
 > `getvcp` 0.35 s). The conclusion — do not run `detect` repeatedly — stands.

@@ -1,8 +1,11 @@
 # Direct Python Module Import for Ulauncher Extension
 
-> Refined by [ADR-0012](0012-packaging-and-module-resolution.md), which specifies how the core
-> reaches the daemon's `sys.path` (PEP 668 blocks `pip install --user` on the reference
-> machine) and replaces the per-keystroke latency argument with measured DDC/CI costs.
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Refined by:** [ADR-0012](0012-packaging-and-module-resolution.md)
+
+> ADR-0012 specifies how the core reaches the daemon's `sys.path` (PEP 668 blocks
+> `pip install --user` on the reference machine) and replaces the per-keystroke latency
+> argument below with measured DDC/CI costs.
 
 Ulauncher extensions run in a separate daemon process using the system's Python interpreter. We considered whether the extension should shell out to `monswitch` CLI commands via subprocess or import the core Python module directly.
 

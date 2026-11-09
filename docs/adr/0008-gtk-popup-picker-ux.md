@@ -1,5 +1,8 @@
 # GTK3 Spotlight-Style Popup Picker UX
 
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Refined by:** [ADR-0009](0009-input-provenance-and-trust-tiers.md), [ADR-0011](0011-graphical-disambiguation-and-failure-surfacing.md)
+
 When `monswitch` is invoked without arguments (e.g. bound to a system hotkey like `Super+M`), it opens a graphical picker for fast input switching.
 
 We decided on a minimal, keyboard-first Spotlight/Rofi-style popup:

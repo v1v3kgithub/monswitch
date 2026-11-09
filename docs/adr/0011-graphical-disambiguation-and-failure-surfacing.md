@@ -1,7 +1,9 @@
 # Graphical Disambiguation and Failure Surfacing
 
-> Refines [ADR-0006](0006-input-resolution-and-disambiguation.md), which specified resolution
-> for terminal contexts only.
+> **Status:** Accepted · **Date:** 2026-11-09
+> **Refines:** [ADR-0006](0006-input-resolution-and-disambiguation.md), [ADR-0008](0008-gtk-popup-picker-ux.md)
+
+> ADR-0006 specified resolution for terminal contexts only; this ADR adds the graphical ones.
 
 ADR-0006 branches on `sys.stdin.isatty()`: interactive terminals get a numbered selection
 prompt for an ambiguous input query, and non-interactive contexts "immediately abort with exit

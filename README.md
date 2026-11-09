@@ -167,8 +167,9 @@ before first use either. It builds the input list by merging the live `getvcp 60
 was **observed live**, **reported** by the firmware, or **guessed** from the table, and
 treating a guessed entry with more caution before switching to it. `monswitch learn` is an
 *optional* OSD walk-through that upgrades guesses to confirmed codes and records them per
-monitor (keyed by serial). See `docs/adr/0001-zero-config-dynamic-discovery.md` and
-`docs/adr/0009-*.md`.
+monitor (keyed per `docs/adr/0013-identity-host-input-and-target-resolution.md`). See
+`docs/adr/0001-zero-config-dynamic-discovery.md` and
+`docs/adr/0009-input-provenance-and-trust-tiers.md`.
 
 ### Switching away from your own input is one-way
 
@@ -210,13 +211,17 @@ Developed against:
 
 ## Status
 
-**Current:** documentation only. No code yet. The design is recorded as ADRs in
-[`docs/adr/`](docs/adr/), with the domain vocabulary in [`docs/CONTEXT.md`](docs/CONTEXT.md).
+**Current:** documentation only. No code yet. The design is recorded as 13 ADRs, indexed in
+[`docs/adr/README.md`](docs/adr/README.md), with the domain vocabulary in
+[`docs/CONTEXT.md`](docs/CONTEXT.md) and the agent brief in
+[`docs/AGENTS.md`](docs/AGENTS.md).
 
 ### Roadmap
 
 - [ ] `monswitch list` — detect monitors, print inputs, mark the active one
-- [ ] `monswitch set [<monitor>] <input>` — the plumbing command
+- [ ] `monswitch set <input>` / `set <monitor> <input>` / `-m <monitor> set <input>` — the
+      plumbing command. Arity decides: one positional is an input on the auto-targeted
+      monitor, two are monitor then input
 - [ ] GTK popup picker (`monswitch` with no args)
 - [ ] Ulauncher extension wrapping the same core
 - [ ] `monswitch learn` — optional OSD walk-through that confirms guessed codes
