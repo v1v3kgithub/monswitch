@@ -62,10 +62,21 @@ echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf
 
 ### 4. Non-root access to the I²C buses
 
-This step is **required**, not optional, for the Ulauncher path: a Ulauncher extension runs
-as your user with no TTY, so it can never prompt for a sudo password.
+Non-root access is **required**, not optional, for the Ulauncher path: a Ulauncher extension
+runs as your user with no TTY, so it can never prompt for a sudo password.
 
-The `ddcutil` package ships a udev rule granting the `i2c` group access:
+**Check whether you already have it before changing anything.** On a modern systemd desktop,
+logind's `uaccess` tag often grants your seat's user a POSIX ACL on the DRM-connector buses
+automatically — this is the case on the reference machine:
+
+```bash
+getfacl /dev/i2c-16 | grep "^user:"   # look for: user:<you>:rw-
+ddcutil detect                         # if this works without sudo, you are done
+```
+
+If that works, skip the rest of this step.
+
+Otherwise, the `ddcutil` package ships a udev rule granting the `i2c` group access:
 
 ```bash
 sudo usermod -aG i2c "$USER"
@@ -78,6 +89,9 @@ Verify:
 id -nG | tr ' ' '\n' | grep -x i2c   # should print: i2c
 ddcutil detect                        # no sudo
 ```
+
+Note: being absent from the `i2c` group is *not* by itself a problem — the ACL route above
+can already grant access. Test with `ddcutil detect`, not with `id`.
 
 <details>
 <summary>Fallback if the <code>i2c</code> group route does not work</summary>
@@ -125,6 +139,10 @@ Feature: 60 (Input Source)
 …while `getvcp 60` on that same monitor, on its USB-C input, returns `sl=0x13` — a value
 missing from the list. So the capability list is a hint, not the truth.
 
+Note that `1f` in the list above is reported as "Unrecognized value" — so the list is not
+merely incomplete, it also contains entries that are not usable inputs. It misreports in both
+directions.
+
 **Reliable way to map codes:** read the value while cycling inputs by hand on the OSD:
 
 ```bash
@@ -143,8 +161,14 @@ Common values (standard MCCS, plus vendor extensions in the wild):
 | `0x1b` | USB-C / Thunderbolt (some vendors) |
 | `0x1f` | vendor-specific / second USB-C     |
 
-MonitorSwitcher should therefore let you **record a learned code map per monitor** (keyed by
-the monitor's serial from `ddcutil detect`) rather than trusting `capabilities`.
+MonitorSwitcher therefore does not trust `capabilities`, and does not make you calibrate
+before first use either. It builds the input list by merging the live `getvcp 60` value, the
+`capabilities` report, and the fallback table above — tracking, per input, whether the entry
+was **observed live**, **reported** by the firmware, or **guessed** from the table, and
+treating a guessed entry with more caution before switching to it. `monswitch learn` is an
+*optional* OSD walk-through that upgrades guesses to confirmed codes and records them per
+monitor (keyed by serial). See `docs/adr/0001-zero-config-dynamic-discovery.md` and
+`docs/adr/0009-*.md`.
 
 ### Switching away from your own input is one-way
 
@@ -179,16 +203,18 @@ Developed against:
 
 ## Status
 
-**Current:** documentation only. No code yet.
+**Current:** documentation only. No code yet. The design is recorded as ADRs in
+[`docs/adr/`](docs/adr/), with the domain vocabulary in [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
 ### Roadmap
 
 - [ ] `monswitch list` — detect monitors, print inputs, mark the active one
-- [ ] `monswitch set <monitor> <input>` — the plumbing command
-- [ ] `monswitch learn` — guided OSD walk-through that records the real code map
+- [ ] `monswitch set [<monitor>] <input>` — the plumbing command
 - [ ] GTK popup picker (`monswitch` with no args)
 - [ ] Ulauncher extension wrapping the same core
-- [ ] Config at `~/.config/monswitch/config.toml` — learned code maps, friendly names
+- [ ] `monswitch learn` — optional OSD walk-through that confirms guessed codes
+- [ ] Config at `~/.config/monswitch/config.toml` — overrides: friendly names, aliases,
+      confirmed code maps, `confirm_switch`
 
 ---
 

@@ -10,3 +10,6 @@ build/
 .pytest_cache/
 *.swp
 .DS_Store
+.idea/
+.vscode/
+
