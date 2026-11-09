@@ -138,6 +138,13 @@ they want to flip the monitor to its DisplayPort input from software.
 **No `setvcp` has ever been issued on this machine.** All probing to date has been read-only.
 Keep it that way absent explicit, in-the-moment confirmation (fact 3).
 
+Still true as of 2026-11-09, after the write path landed. `monswitch set usbc` has been run
+live with the user's authorisation, but that is the **no-op** path: the destination was the
+Host Input, so `switch_input` returned before reaching `set_input` and built no command.
+`getvcp` read `x13` identically before and after. The real write therefore has **no live
+coverage**, and acquiring it means blacking out the reference monitor and recovering with its
+physical buttons — so it is the user's call to make, at the monitor, not an agent's.
+
 ## CLI surface
 
 | Invocation | Behaviour |
