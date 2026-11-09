@@ -16,8 +16,16 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from unittest import mock
+
 from monswitch.cli import EXIT_ERROR, EXIT_OK, main
-from monswitch.core.ddc import DetectedDisplay, I2cPermissionDenied, NoMonitorOnBus
+from monswitch.core.ddc import (
+    DetectedDisplay,
+    I2cPermissionDenied,
+    NoMonitorOnBus,
+    WriteCapableDdcutil,
+)
+from monswitch.gtk_picker import PickerResult
 
 from test_discovery import REFERENCE_CAPS, FakeDdcutil
 from test_sysfs import HP_EDID, LGD_EDID, make_connector
@@ -348,18 +356,92 @@ class DetectFallbackTest(CliTestCase):
 
 
 class NoArgumentsTest(CliTestCase):
-    def test_reports_that_the_picker_is_not_built_yet(self) -> None:
-        """ADR-0008 reserves no-args for the picker; until then, be explicit."""
-        code, out, _ = self.run_cli()
+    """No arguments opens the picker (ADR-0008).
+
+    `run_picker` is patched throughout: these tests must never put a real window on the
+    developer's screen, and a GTK main loop in a test suite would hang it.
+    """
+
+    def test_no_monitors_fails_before_opening_a_window(self) -> None:
+        """An empty popup explains nothing, so report on the terminal instead."""
+        with mock.patch("monswitch.gtk_picker.run_picker") as picker:
+            code, _, err = self.run_cli()
+
+        picker.assert_not_called()
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("no external monitor", err)
+
+    def test_opens_the_picker_with_the_discovered_monitors(self) -> None:
+        self.one_hp()
+
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
+        ) as picker:
+            code, _, _ = self.run_cli(ddcutil=self.reference_ddcutil())
 
         self.assertEqual(code, EXIT_OK)
-        self.assertIn("not implemented yet", out)
-        self.assertIn("monswitch list", out)
+        picker.assert_called_once()
+        monitors = picker.call_args.args[0]
+        self.assertEqual(len(monitors), 1)
+        self.assertEqual(monitors[0].monitor.display_name, "HP Z38c")
 
-    def test_shows_usage(self) -> None:
-        _, out, _ = self.run_cli()
+    def test_passes_the_write_capable_wrapper(self) -> None:
+        """The picker can switch, so it must be given a wrapper that can write."""
+        self.one_hp()
 
-        self.assertIn("usage:", out)
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
+        ) as picker:
+            self.run_cli(ddcutil=self.reference_ddcutil())
+
+        self.assertIsInstance(picker.call_args.kwargs["ddcutil"], WriteCapableDdcutil)
+
+    def test_carries_warnings_into_the_window(self) -> None:
+        """There is no terminal in the user's attention once a popup is open (ADR-0011)."""
+        self.one_hp()
+
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
+        ) as picker:
+            self.run_cli(
+                ddcutil=FakeDdcutil(live_errors={16: NoMonitorOnBus("no answer")})
+            )
+
+        self.assertIsNotNone(picker.call_args.kwargs["message"])
+
+    def test_reports_a_switch(self) -> None:
+        self.one_hp()
+
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker", return_value=PickerResult(switched=True)
+        ):
+            code, out, _ = self.run_cli(ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("switched", out)
+
+    def test_cancelling_is_not_an_error(self) -> None:
+        self.one_hp()
+
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
+        ):
+            code, out, _ = self.run_cli(ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertNotIn("switched", out)
+
+    def test_picker_error_is_reported(self) -> None:
+        self.one_hp()
+
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker",
+            return_value=PickerResult(error="GTK exploded"),
+        ):
+            code, _, err = self.run_cli(ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("GTK exploded", err)
 
 
 class WriteSurfaceTest(CliTestCase):

@@ -233,7 +233,7 @@ Or without installing anything: `PYTHONPATH=src python3 -m monswitch.cli list`.
 - [ ] `monswitch set <input>` / `set <monitor> <input>` / `-m <monitor> set <input>` — the
       plumbing command. Arity decides: one positional is an input on the auto-targeted
       monitor, two are monitor then input
-- [ ] GTK popup picker (`monswitch` with no args)
+- [x] GTK popup picker (`monswitch` with no args)
 - [ ] Ulauncher extension wrapping the same core
 - [ ] `monswitch learn` — optional OSD walk-through that confirms guessed codes
 - [ ] Config at `~/.config/monswitch/config.toml` — overrides: friendly names, aliases,

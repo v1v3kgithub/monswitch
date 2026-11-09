@@ -194,14 +194,8 @@ def main(
             setattr(args, name, default)
 
     if args.command is None:
-        # ADR-0008 specifies a GTK popup picker here. Until it exists, say so plainly rather
-        # than silently doing something else.
-        print(parser.format_help().rstrip(), file=stdout)
-        print(
-            "\nThe popup picker is not implemented yet. For now, use: monswitch list",
-            file=stdout,
-        )
-        return EXIT_OK
+        # ADR-0008: no arguments means the popup picker.
+        return _run_picker(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
 
     if args.command == "list":
         return _run_list(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
@@ -597,3 +591,78 @@ def _describe_verdict(verdict: Confirmation) -> str:
             "stronger confirmation required, even with confirm_switch = false"
         )
     return "refused: the current input could not be read, so the risk cannot be assessed"
+
+
+def _run_picker(
+    args: argparse.Namespace,
+    *,
+    ddcutil: Ddcutil | None,
+    drm_root: Path,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Open the GTK popup picker (ADR-0008).
+
+    Discovery happens before the window opens, so a failure can be reported plainly on the
+    terminal rather than as an empty popup. Once the window is up, everything the user needs
+    to know is rendered inside it (ADR-0011).
+    """
+    from .gtk_picker import GTK_AVAILABLE, gtk_import_error, run_picker
+
+    if not GTK_AVAILABLE:
+        print(f"{PROGRAM}: the popup picker needs GTK: {gtk_import_error()}", file=err)
+        print(
+            "Install it with: sudo apt install python3-gi gir1.2-gtk-3.0\n"
+            "Meanwhile, monswitch list and monswitch set work without it.",
+            file=err,
+        )
+        return EXIT_ERROR
+
+    config, config_warnings = load_tolerant(args.config)
+    for warning in config_warnings:
+        print(f"{PROGRAM}: config: {warning}", file=err)
+
+    try:
+        result = discover(
+            ddcutil,
+            root=drm_root,
+            include_capabilities=True,
+            confirmed_inputs=config.confirmed_inputs(),
+            name_overrides=config.name_overrides(),
+        )
+    except DdcutilError as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
+        return EXIT_ERROR
+
+    monitors = _select(result.monitors, args.monitor)
+    if not monitors:
+        _report_nothing_found(result, out=out, err=err, verbose=args.verbose)
+        return EXIT_ERROR
+
+    # Warnings are carried into the window, since there is no terminal in the user's attention
+    # once a popup is open.
+    opening_message = (
+        "; ".join(f"{w.monitor}: {w.message}" for w in result.warnings)
+        if result.warnings
+        else None
+    )
+
+    writer = (
+        ddcutil
+        if isinstance(ddcutil, WriteCapableDdcutil)
+        else WriteCapableDdcutil(
+            executable=ddcutil.executable if ddcutil else "ddcutil",
+            timeout=ddcutil.timeout if ddcutil else 10.0,
+        )
+    )
+
+    outcome = run_picker(
+        monitors, config=config, ddcutil=writer, message=opening_message
+    )
+
+    if outcome.error:
+        print(f"{PROGRAM}: {outcome.error}", file=err)
+        return EXIT_ERROR
+    if outcome.switched:
+        print(f"{PROGRAM}: switched.", file=out)
+    return EXIT_OK

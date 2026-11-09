@@ -26,11 +26,19 @@ the provenance tiers and confirmation policy, the discovery merge, the config la
 `list` CLI. 244 tests, runnable without hardware.
 
 Also implemented: input resolution (ADR-0006 priority order), the interaction-strategy seam
-that keeps `isatty()` out of the core (ADR-0011), the `set` arity rule (ADR-0013), and
-`monswitch set --dry-run`, which resolves a target and reports the verdict without writing.
+that keeps `isatty()` out of the core (ADR-0011), the `set` arity rule (ADR-0013),
+`monswitch set --dry-run`, the write path behind its confirmation gate (`switching.py`), and
+the GTK popup picker (`monswitch` with no arguments).
 
-Not yet built: the write path and its confirmation flow, `learn`, the GTK picker, the
-Ulauncher extension. `monswitch set` without `--dry-run` deliberately refuses.
+The picker's logic — filtering, selection, and the two-step Enter that serves as its
+confirmation — lives in `core/picker.py` and is tested without a display. `gtk_picker.py` holds
+widgets and key events only, and the Ulauncher extension is meant to reuse the same model.
+
+**Never launch the picker from an agent session.** `Gtk.main()` blocks, and the window appears
+on the user's screen unannounced. Verify it by importing the module and testing `PickerModel`;
+leave running it to the user.
+
+Not yet built: `learn`, the Ulauncher extension.
 
 Design is settled in [`adr/`](adr/) — 13 ADRs, indexed in [`adr/README.md`](adr/README.md).
 **Read the ADRs before coding**, 0009–0013 especially: they carry the safety-critical rules and
