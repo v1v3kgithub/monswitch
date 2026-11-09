@@ -438,6 +438,41 @@ class CollisionTest(DiscoveryTestCase):
         self.assertEqual(len(result.warnings), 2)
         self.assertIn("share the identity", result.warnings[0].message)
 
+    def test_collision_actually_withholds_the_confirmed_map(self) -> None:
+        """Not just flagged: the overrides must not reach either monitor (ADR-0013).
+
+        Regression test. Discovery originally applied overrides and detected the collision
+        afterwards, so one panel's confirmed map was attributed to another before anything
+        noticed -- which is the exact failure the rule exists to prevent.
+        """
+        make_connector(self.root, "card1-DP-1", bus=16, edid=LGD_EDID)
+        make_connector(self.root / "card2", "card2-DP-1", bus=22, edid=LGD_EDID)
+
+        result = discover(
+            FakeDdcutil(live={16: 0x0F, 22: 0x11}),
+            root=self.root,
+            confirmed_inputs={"LGD:product-1826:DP-1": {0x12: "Should not appear"}},
+            name_overrides={"LGD:product-1826:DP-1": "Should not appear either"},
+        )
+
+        for keyed in result.monitors:
+            hdmi2 = keyed.monitor.input_for(0x12)
+            assert hdmi2 is not None
+            self.assertNotEqual(hdmi2.name, "Should not appear")
+            self.assertNotEqual(hdmi2.provenance, Provenance.CONFIRMED)
+            self.assertNotEqual(keyed.monitor.display_name, "Should not appear either")
+
+    def test_name_override_applies_when_there_is_no_collision(self) -> None:
+        make_connector(self.root, "card1-DP-1", bus=16, edid=HP_EDID)
+
+        result = discover(
+            FakeDdcutil(live={16: 0x13}),
+            root=self.root,
+            name_overrides={"DEMOSERIAL": "Big Ultrawide"},
+        )
+
+        self.assertEqual(result.monitors[0].monitor.display_name, "Big Ultrawide")
+
 
 class EmptyTest(DiscoveryTestCase):
     def test_no_connectors_yields_nothing(self) -> None:

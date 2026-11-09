@@ -117,6 +117,7 @@ def discover(
     root: Path = DEFAULT_DRM_ROOT,
     include_capabilities: bool = False,
     confirmed_inputs: Mapping[str, Mapping[int, str]] | None = None,
+    name_overrides: Mapping[str, str] | None = None,
     include_fallback_codes: bool = True,
 ) -> Discovery:
     """Find monitors and build their input lists.
@@ -129,6 +130,7 @@ def discover(
             opts in, a launcher keystroke does not.
         confirmed_inputs: user-confirmed code maps, keyed by identity key (ADR-0013). Supplied
             by the config layer; an empty mapping simply means nothing is confirmed yet.
+        name_overrides: user-supplied monitor names, keyed by identity key.
         include_fallback_codes: whether to pad the list with :data:`FALLBACK_INPUT_CODES`.
 
     Never raises for a single unreadable monitor: the failure becomes a warning and the other
@@ -136,6 +138,7 @@ def discover(
     """
     runner = ddcutil or Ddcutil()
     confirmed_by_key = confirmed_inputs or {}
+    names_by_key = name_overrides or {}
 
     resolution = resolve(root)
     warnings: list[MonitorWarning] = []
@@ -147,20 +150,27 @@ def discover(
     else:
         candidates = [(m.identity, m.bus, m.connector) for m in resolution.monitors]
 
+    # Keys are derived for every candidate before any override is applied, because a key
+    # shared by two monitors must have its overrides withheld from both (ADR-0013). Applying
+    # them first and detecting the collision afterwards would mean one panel's confirmed map
+    # had already been attributed to another, which is the failure the rule exists to stop.
+    keys = [identity_key(identity, connector) for identity, _, connector in candidates]
+    colliding = {key for key in keys if keys.count(key) > 1}
+
     monitors: list[Monitor] = []
-    for identity, bus, connector in candidates:
+    for (identity, bus, connector), key in zip(candidates, keys):
         label = identity.model or f"{identity.manufacturer} on {connector}"
         host_input = _read_host_input(runner, bus, label, warnings)
         reported, firmware_unnamed = _read_capabilities(
             runner, bus, label, warnings, enabled=include_capabilities
         )
 
-        key = identity_key(identity, connector)
+        trusted = key not in colliding
         found = _assemble_inputs(
             host_input=host_input,
             reported=reported,
             firmware_unnamed=firmware_unnamed,
-            confirmed=confirmed_by_key.get(key, {}),
+            confirmed=confirmed_by_key.get(key, {}) if trusted else {},
             include_fallback_codes=include_fallback_codes,
         )
 
@@ -171,6 +181,7 @@ def discover(
                 connector=connector,
                 inputs=found,
                 host_input=host_input,
+                label=names_by_key.get(key) if trusted else None,
             )
         )
 

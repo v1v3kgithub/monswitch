@@ -129,6 +129,8 @@ class Monitor:
     connector: str
     inputs: tuple[InputSource, ...] = ()
     host_input: int | None = None
+    label: str | None = None
+    """A user-supplied name from config, which wins over the EDID model if set."""
 
     @property
     def is_switchable(self) -> bool:
@@ -141,7 +143,14 @@ class Monitor:
 
     @property
     def display_name(self) -> str:
-        """Short human-facing name: the EDID model, else the manufacturer and connector."""
+        """Short human-facing name.
+
+        Prefers the user's configured name, then the EDID model, then manufacturer plus
+        connector. The config name wins because a user who bothered to name a monitor
+        knows better than its firmware what they call it.
+        """
+        if self.label:
+            return self.label
         if self.identity.model:
             return self.identity.model
         return f"{self.identity.manufacturer} on {self.connector}"
