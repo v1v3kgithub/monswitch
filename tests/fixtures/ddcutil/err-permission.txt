@@ -1,0 +1,2 @@
+Open failed for /dev/i2c-0: errno=EACCES(13): Permission denied
+No monitor detected on bus /dev/i2c-0

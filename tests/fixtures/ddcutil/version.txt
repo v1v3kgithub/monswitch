@@ -1,0 +1,9 @@
+ddcutil 1.4.1
+Built with support for USB connected displays.
+Built without function failure simulation.
+Built with libdrm services.
+
+Copyright (C) 2015-2023 Sanford Rockowitz
+License GPLv2: GNU GPL version 2 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

@@ -28,13 +28,25 @@ discovery merge can tier it per ADR-0009. Deciding what an unnamed code means is
 from __future__ import annotations
 
 import re
+import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 __all__ = [
+    "BusNotFound",
     "CapabilityInput",
+    "CommandResult",
+    "Ddcutil",
+    "DdcutilError",
+    "DdcutilFailed",
+    "DdcutilNotInstalled",
     "DdcutilParseError",
+    "DdcutilTimeout",
     "DetectedDisplay",
+    "I2cPermissionDenied",
     "INPUT_SOURCE_FEATURE",
+    "NoMonitorOnBus",
+    "Runner",
     "parse_capabilities_inputs",
     "parse_detect",
     "parse_getvcp_input",
@@ -298,3 +310,197 @@ def _clean_mfg_id(raw: str) -> str | None:
     """Strip ddcutil's ``" - UNK"`` lookup suffix from a verbose ``Mfg id:`` value."""
     value = raw.split(" - ")[0].strip()
     return value or None
+
+
+# ---------------------------------------------------------------------------
+# Subprocess wrapper
+#
+# Everything above is pure parsing. Everything below actually runs ddcutil.
+#
+# Read-only by construction: this wrapper exposes detect, capabilities and
+# getvcp, and has no setvcp method at all. That omission is deliberate and
+# load-bearing -- a write path that does not exist cannot be called by
+# accident, by a test, or by an agent. The write path arrives with the
+# confirmation flow, not before.
+# ---------------------------------------------------------------------------
+
+
+class DdcutilError(Exception):
+    """Base for failures of the ``ddcutil`` command itself.
+
+    Separate from :class:`DdcutilParseError`: these mean the command did not give a usable
+    answer, rather than that its output was unrecognisable. Each subclass carries enough
+    context for a frontend to render an actionable message (ADR-0011).
+    """
+
+
+class DdcutilNotInstalled(DdcutilError):
+    """The ``ddcutil`` executable could not be found on ``PATH``."""
+
+
+class DdcutilTimeout(DdcutilError):
+    """``ddcutil`` did not finish within the allotted time."""
+
+
+class I2cPermissionDenied(DdcutilError):
+    """The I²C device node could not be opened: the user lacks access.
+
+    The actionable fix is one of the three routes in the README — a ``uaccess`` ACL on the
+    local seat, ``i2c`` group membership, or a scoped sudoers rule.
+    """
+
+
+class BusNotFound(DdcutilError):
+    """No such I²C bus. Usually a stale bus number; re-resolve rather than retrying."""
+
+
+class NoMonitorOnBus(DdcutilError):
+    """The bus exists and is readable, but no monitor answered DDC/CI on it.
+
+    Expected for a disconnected port, and for a panel with DDC/CI switched off in its OSD —
+    which is the first thing to suggest when a monitor is visibly present.
+    """
+
+
+class DdcutilFailed(DdcutilError):
+    """``ddcutil`` exited non-zero for a reason not matched by a more specific subclass."""
+
+
+# ddcutil 1.4.1 exits 1 for every failure, so the exit code alone cannot distinguish a
+# permission problem from an absent monitor. The distinction has to come from the message.
+# Order matters: a permission failure also prints "No monitor detected", so the more specific
+# pattern must be tested first.
+_PERMISSION_MARKERS = ("permission denied", "eacces")
+_BUS_NOT_FOUND = re.compile(r"\bBus\s+\S+\s+not found\b", re.IGNORECASE)
+_NO_MONITOR = re.compile(r"\bNo monitor detected\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True, slots=True)
+class CommandResult:
+    """The raw outcome of one ``ddcutil`` invocation."""
+
+    argv: tuple[str, ...]
+    returncode: int
+    stdout: str
+    stderr: str
+
+    @property
+    def output(self) -> str:
+        """stdout and stderr together.
+
+        ddcutil writes diagnostics to both depending on the message, so classification and
+        parsing both read the combined stream.
+        """
+        return f"{self.stdout}\n{self.stderr}" if self.stderr else self.stdout
+
+
+Runner = Callable[[Sequence[str], float], CommandResult]
+"""How a command is actually executed. Injectable so the wrapper is testable without hardware."""
+
+
+def _subprocess_runner(argv: Sequence[str], timeout: float) -> CommandResult:
+    """Default runner: a plain, non-shell subprocess call."""
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, never shell=True
+            list(argv),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise DdcutilNotInstalled(
+            f"{argv[0]!r} not found on PATH; install ddcutil (see README)"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise DdcutilTimeout(
+            f"{' '.join(argv)} did not finish within {timeout:g}s"
+        ) from exc
+
+    return CommandResult(
+        argv=tuple(argv),
+        returncode=completed.returncode,
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Ddcutil:
+    """Runs the read-only ``ddcutil`` commands and parses their output.
+
+    ``timeout`` defaults to 10s: generously above the measured 3.1s worst case
+    (``capabilities``) so a slow panel is not cut off, but bounded so a wedged DDC/CI channel
+    cannot hang a launcher indefinitely.
+    """
+
+    executable: str = "ddcutil"
+    timeout: float = 10.0
+    runner: Runner = _subprocess_runner
+
+    def detect(self, *, terse: bool = True) -> tuple[DetectedDisplay, ...]:
+        """Run ``ddcutil detect`` — the fallback discovery path (ADR-0010).
+
+        Slow (1.5s measured) because it probes every bus, so prefer sysfs resolution and call
+        this only when the driver publishes no ``ddc`` links.
+        """
+        args = ["detect"]
+        if terse:
+            args.append("--terse")
+        result = self._run(args)
+        # detect exits 0 even when it finds nothing, so an empty result is not an error.
+        if result.returncode != 0:
+            self._raise_for(result)
+        return parse_detect(result.output)
+
+    def getvcp_input(self, bus: int) -> int:
+        """Read the current Input Source on ``bus``.
+
+        A successful read is also proof that the monitor is displaying this machine, which is
+        what makes the returned value the Host Input (ADR-0013).
+        """
+        result = self._run(["--bus", str(bus), "getvcp", "60", "--terse"])
+        if result.returncode != 0:
+            self._raise_for(result, bus=bus)
+        return parse_getvcp_input(result.output)
+
+    def capabilities_inputs(self, bus: int) -> tuple[CapabilityInput, ...]:
+        """Read the advertised Input Source values on ``bus``.
+
+        Slowest of the three (3.1s measured) and unreliable in both directions, so it belongs
+        off the interactive path (ADR-0010).
+        """
+        result = self._run(["--bus", str(bus), "capabilities"])
+        if result.returncode != 0:
+            self._raise_for(result, bus=bus)
+        return parse_capabilities_inputs(result.output)
+
+    def _run(self, args: Sequence[str]) -> CommandResult:
+        return self.runner([self.executable, *args], self.timeout)
+
+    def _raise_for(self, result: CommandResult, *, bus: int | None = None) -> None:
+        """Translate a failed invocation into the most specific error available."""
+        output = result.output
+        lowered = output.lower()
+        where = f" on bus {bus}" if bus is not None else ""
+
+        # Checked before NoMonitorOnBus: ddcutil prints both lines for a permission failure.
+        if any(marker in lowered for marker in _PERMISSION_MARKERS):
+            raise I2cPermissionDenied(
+                f"cannot open the I2C device{where}: permission denied. "
+                "Grant non-root access (see README: i2c group or uaccess ACL). "
+                f"ddcutil said: {output.strip()}"
+            )
+
+        if _BUS_NOT_FOUND.search(output):
+            raise BusNotFound(f"I2C bus not found{where}; re-resolve the monitor")
+
+        if _NO_MONITOR.search(output):
+            raise NoMonitorOnBus(
+                f"no monitor answered DDC/CI{where}. If a monitor is connected, check that "
+                "DDC/CI is enabled in its on-screen menu"
+            )
+
+        raise DdcutilFailed(
+            f"{' '.join(result.argv)} exited {result.returncode}: {output.strip()}"
+        )
