@@ -134,7 +134,7 @@ def resolve(root: Path = DEFAULT_DRM_ROOT) -> Resolution:
     skipped: list[tuple[str, str]] = []
     links_seen = 0
 
-    for connector_dir in sorted(root.glob("card*-*")) or sorted(root.glob("card*/card*-*")):
+    for connector_dir in _connector_dirs(root):
         name = connector_dir.name
         match = _CONNECTOR_NAME.match(name)
         if match is None:
@@ -194,6 +194,30 @@ def resolve(root: Path = DEFAULT_DRM_ROOT) -> Resolution:
     return Resolution(
         monitors=tuple(monitors), skipped=tuple(skipped), ddc_links_seen=links_seen
     )
+
+
+def _connector_dirs(root: Path) -> list[Path]:
+    """Every DRM connector directory under ``root``, each listed once.
+
+    Real sysfs publishes connectors twice: as flat symlinks directly in ``/sys/class/drm``
+    (``card1-DP-1``) and nested under the card (``card1/card1-DP-1``). Both resolve to the
+    same directory, so both globs are collected and deduplicated by resolved path.
+
+    An earlier version used ``flat or nested``, which looked equivalent on this machine and
+    was not: one flat match suppressed the nested scan entirely, so a second GPU whose
+    connectors were only nested vanished silently. Prefer the union over the cheaper guess.
+    """
+    seen: dict[Path, Path] = {}
+    for pattern in ("card*-*", "card*/card*-*"):
+        for candidate in root.glob(pattern):
+            if not candidate.is_dir():
+                continue
+            try:
+                real = candidate.resolve()
+            except OSError:
+                real = candidate
+            seen.setdefault(real, candidate)
+    return sorted(seen.values(), key=lambda path: path.name)
 
 
 def _read_bus(connector_dir: Path) -> int | None:

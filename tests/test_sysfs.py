@@ -100,13 +100,36 @@ class ResolveTest(TempDrmTree):
         self.assertEqual(buses, [16, 17, 18])
 
     def test_nested_card_layout_is_supported(self) -> None:
-        """Some kernels nest connectors under the card dir: card1/card1-DP-1."""
+        """Real sysfs nests connectors under the card dir: card1/card1-DP-1."""
         make_connector(self.root / "card1", "card1-DP-1", bus=16)
 
         result = resolve(self.root)
 
         self.assertEqual(len(result.monitors), 1)
         self.assertEqual(result.monitors[0].bus, 16)
+
+    def test_flat_and_nested_layouts_are_unioned_not_either_or(self) -> None:
+        """A flat match must not suppress the nested scan.
+
+        Regression test: `flat or nested` looked correct on the dev machine, where both
+        globs return the same connectors, but silently dropped a second GPU whose connectors
+        appeared only in the nested form.
+        """
+        make_connector(self.root, "card1-DP-1", bus=16, edid=HP_EDID)
+        make_connector(self.root / "card2", "card2-DP-1", bus=22, edid=HP_EDID)
+
+        result = resolve(self.root)
+
+        self.assertEqual([m.bus for m in result.monitors], [16, 22])
+
+    def test_the_same_connector_seen_twice_is_listed_once(self) -> None:
+        """Real sysfs exposes each connector as both a flat symlink and a nested dir."""
+        nested = make_connector(self.root / "card1", "card1-DP-1", bus=16, edid=HP_EDID)
+        os.symlink(nested, self.root / "card1-DP-1")
+
+        result = resolve(self.root)
+
+        self.assertEqual(len(result.monitors), 1)
 
     def test_multiple_monitors_on_distinct_buses(self) -> None:
         make_connector(self.root, "card1-DP-1", bus=16, edid=HP_EDID)
