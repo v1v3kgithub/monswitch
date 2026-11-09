@@ -134,6 +134,74 @@ class ListTest(CliTestCase):
         self.assertEqual(ddcutil.capability_calls, [16])
 
 
+class FlagPositionTest(CliTestCase):
+    """Shared flags must work on either side of the subcommand.
+
+    Regression: they were defined only on the main parser, so the natural
+    `monswitch list -v` failed with "unrecognized arguments: -v". Attaching the same
+    flags to the subparsers then risked the opposite bug -- argparse overwriting a value
+    set before the subcommand with the subparser's default -- so they use SUPPRESS and are
+    filled in after parsing.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        make_connector(self.root, "card1-eDP-1", bus=15, edid=LGD_EDID)
+        self.one_hp()
+
+    def test_verbose_after_the_subcommand(self) -> None:
+        code, _, err = self.run_cli("list", "-v", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("internal panel", err)
+
+    def test_verbose_before_the_subcommand(self) -> None:
+        code, _, err = self.run_cli("-v", "list", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("internal panel", err)
+
+    def test_both_orders_agree(self) -> None:
+        _, _, before = self.run_cli("-v", "list", ddcutil=self.reference_ddcutil())
+        _, _, after = self.run_cli("list", "-v", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(before, after)
+
+    def test_verbose_absent_stays_quiet(self) -> None:
+        _, _, err = self.run_cli("list", ddcutil=self.reference_ddcutil())
+
+        self.assertNotIn("internal panel", err)
+
+    def test_monitor_filter_after_the_subcommand(self) -> None:
+        _, out, _ = self.run_cli("list", "-m", "Z38c", ddcutil=self.reference_ddcutil())
+
+        self.assertIn("HP Z38c", out)
+
+    def test_monitor_filter_before_the_subcommand(self) -> None:
+        _, out, _ = self.run_cli("-m", "Z38c", "list", ddcutil=self.reference_ddcutil())
+
+        self.assertIn("HP Z38c", out)
+
+    def test_mixed_with_a_subcommand_only_flag(self) -> None:
+        ddcutil = self.reference_ddcutil()
+
+        code, _, err = self.run_cli(
+            "list", "--no-capabilities", "-v", ddcutil=ddcutil
+        )
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(ddcutil.capability_calls, [])
+        self.assertIn("internal panel", err)
+
+    def test_set_accepts_dry_run_either_side_of_its_target(self) -> None:
+        code, out, _ = self.run_cli(
+            "set", "--dry-run", "usbc", ddcutil=self.reference_ddcutil()
+        )
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("0x13", out)
+
+
 class ConfigIntegrationTest(CliTestCase):
     def test_configured_name_and_confirmed_inputs_are_applied(self) -> None:
         self.one_hp()

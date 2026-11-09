@@ -51,38 +51,56 @@ _TIER_LABELS = {
 }
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog=PROGRAM,
-        description="Switch an external monitor's input source over DDC/CI.",
-    )
-    parser.add_argument("--version", action="version", version=f"{PROGRAM} {VERSION}")
-    parser.add_argument(
+def _common_flags() -> argparse.ArgumentParser:
+    """Flags accepted either before or after the subcommand.
+
+    Everything here defaults to ``SUPPRESS`` so that the copy attached to a subparser does
+    not overwrite a value already set by the copy on the main parser. Without that, argparse
+    silently clobbers `monswitch -v list` with the subparser's own default, and the flag
+    appears to do nothing.
+    """
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
         "-m",
         "--monitor",
         metavar="MONITOR",
+        default=argparse.SUPPRESS,
         help=(
             "target a specific monitor by name, model or serial. Always unambiguous, so "
             "prefer it in scripts"
         ),
     )
-    parser.add_argument(
+    common.add_argument(
         "--config",
         metavar="PATH",
         type=Path,
+        default=argparse.SUPPRESS,
         help=f"config file to use (default: {config_path()})",
     )
-    parser.add_argument(
+    common.add_argument(
         "-v",
         "--verbose",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="also report connectors that were skipped and why",
     )
+    return common
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common = _common_flags()
+    parser = argparse.ArgumentParser(
+        prog=PROGRAM,
+        description="Switch an external monitor's input source over DDC/CI.",
+        parents=[common],
+    )
+    parser.add_argument("--version", action="version", version=f"{PROGRAM} {VERSION}")
 
     subcommands = parser.add_subparsers(dest="command")
 
     listing = subcommands.add_parser(
         "list",
+        parents=[common],
         help="show detected monitors, their inputs, and which input is active",
         description=(
             "Show detected monitors and their inputs. Read-only: this never changes "
@@ -102,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     setter = subcommands.add_parser(
         "set",
+        parents=[common],
         help="switch a monitor to an input",
         description=(
             "Switch a monitor's input. Arity decides the target: one positional is an "
@@ -147,6 +166,12 @@ def main(
     args = parser.parse_args(argv)
     stdout = out if out is not None else sys.stdout
     stderr = err if err is not None else sys.stderr
+
+    # The shared flags use SUPPRESS so the two copies cannot overwrite each other, which
+    # means an unused flag is absent rather than defaulted. Fill the gaps once, here.
+    for name, default in (("monitor", None), ("config", None), ("verbose", False)):
+        if not hasattr(args, name):
+            setattr(args, name, default)
 
     if args.command is None:
         # ADR-0008 specifies a GTK popup picker here. Until it exists, say so plainly rather
