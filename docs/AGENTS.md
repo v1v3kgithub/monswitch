@@ -25,8 +25,12 @@ Implemented: EDID parser, sysfs resolution, `ddcutil` parsers and wrapper, domai
 the provenance tiers and confirmation policy, the discovery merge, the config layer, and the
 `list` CLI. 244 tests, runnable without hardware.
 
-Not yet built: input resolution for `set`, the write path and its confirmation flow, `learn`,
-the GTK picker, the Ulauncher extension.
+Also implemented: input resolution (ADR-0006 priority order), the interaction-strategy seam
+that keeps `isatty()` out of the core (ADR-0011), the `set` arity rule (ADR-0013), and
+`monswitch set --dry-run`, which resolves a target and reports the verdict without writing.
+
+Not yet built: the write path and its confirmation flow, `learn`, the GTK picker, the
+Ulauncher extension. `monswitch set` without `--dry-run` deliberately refuses.
 
 Design is settled in [`adr/`](adr/) — 13 ADRs, indexed in [`adr/README.md`](adr/README.md).
 **Read the ADRs before coding**, 0009–0013 especially: they carry the safety-critical rules and

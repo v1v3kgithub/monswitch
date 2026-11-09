@@ -21,7 +21,16 @@ from typing import TextIO
 from .core.config import Config, config_path, load_tolerant
 from .core.ddc import Ddcutil, DdcutilError, DdcutilNotInstalled
 from .core.discovery import Discovery, discover
-from .core.models import KeyedMonitor, Provenance
+from .core.interaction import Choice, Declined, Prompting, Strict
+from .core.models import (
+    Confirmation,
+    InputSource,
+    KeyedMonitor,
+    Monitor,
+    Provenance,
+    switch_confirmation,
+)
+from .core.resolution import resolve_input
 from .core.sysfs import DEFAULT_DRM_ROOT
 
 __all__ = ["main"]
@@ -91,6 +100,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     listing.set_defaults(capabilities=True)
 
+    setter = subcommands.add_parser(
+        "set",
+        help="switch a monitor to an input",
+        description=(
+            "Switch a monitor's input. Arity decides the target: one positional is an "
+            "input on the auto-targeted monitor, two are a monitor then an input. "
+            "-m/--monitor is always unambiguous and is the form to use in scripts."
+        ),
+    )
+    setter.add_argument(
+        "target",
+        nargs="+",
+        metavar="[MONITOR] INPUT",
+        help="an input, optionally preceded by a monitor",
+    )
+    setter.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="resolve the target and report what would happen, changing nothing",
+    )
+    setter.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="do not ask for confirmation (ignored by --dry-run)",
+    )
+
     return parser
 
 
@@ -124,6 +160,11 @@ def main(
 
     if args.command == "list":
         return _run_list(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
+
+    if args.command == "set":
+        return _run_set(
+            args, parser, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr
+        )
 
     parser.print_usage(file=stderr)
     return EXIT_USAGE
@@ -308,3 +349,168 @@ def _report_nothing_found(
 
 if __name__ == "__main__":  # pragma: no cover - module entry point
     raise SystemExit(main())
+
+
+def _split_target(
+    positional: Sequence[str], explicit_monitor: str | None
+) -> tuple[str | None, str] | None:
+    """Apply ADR-0013's arity rule to the positional arguments.
+
+    One positional is an input on the auto-targeted monitor; two are a monitor then an input.
+    The values are never inspected to decide which role they play, so ``set hp dp1`` is always
+    monitor-then-input and never a guess that could land on the wrong hardware.
+
+    Returns ``None`` when the combination is not allowed.
+    """
+    if explicit_monitor is not None and len(positional) > 1:
+        # Supplying both is an error rather than a precedence puzzle (ADR-0013).
+        return None
+    if len(positional) == 1:
+        return explicit_monitor, positional[0]
+    if len(positional) == 2:
+        return positional[0], positional[1]
+    return None
+
+
+def _run_set(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    *,
+    ddcutil: Ddcutil | None,
+    drm_root: Path,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    split = _split_target(args.target, args.monitor)
+    if split is None:
+        if args.monitor is not None and len(args.target) > 1:
+            print(
+                f"{PROGRAM}: give the monitor either with -m or as the first argument, "
+                "not both",
+                file=err,
+            )
+        else:
+            print(
+                f"{PROGRAM}: expected 'set <input>' or 'set <monitor> <input>', "
+                f"got {len(args.target)} arguments",
+                file=err,
+            )
+        return EXIT_USAGE
+
+    monitor_query, input_query = split
+
+    config, config_warnings = load_tolerant(args.config)
+    for warning in config_warnings:
+        print(f"{PROGRAM}: config: {warning}", file=err)
+
+    try:
+        result = discover(
+            ddcutil,
+            root=drm_root,
+            include_capabilities=True,
+            confirmed_inputs=config.confirmed_inputs(),
+            name_overrides=config.name_overrides(),
+        )
+    except DdcutilNotInstalled as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
+        return EXIT_ERROR
+    except DdcutilError as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
+        return EXIT_ERROR
+
+    candidates = _select(result.monitors, monitor_query)
+
+    if not candidates:
+        if monitor_query:
+            print(f"{PROGRAM}: no monitor matches {monitor_query!r}", file=err)
+        else:
+            _report_nothing_found(result, out=out, err=err, verbose=args.verbose)
+        return EXIT_ERROR
+
+    if len(candidates) > 1:
+        # ADR-0004: auto-targeting refuses to guess between monitors.
+        print(
+            f"{PROGRAM}: several monitors are connected; say which one:",
+            file=err,
+        )
+        for keyed in candidates:
+            print(f"  - {keyed.monitor.display_name}  (key {keyed.key})", file=err)
+        return EXIT_USAGE
+
+    keyed = candidates[0]
+    monitor = keyed.monitor
+
+    match = resolve_input(monitor, input_query)
+    if match.is_empty:
+        print(
+            f"{PROGRAM}: {monitor.display_name} has no input matching {input_query!r}. "
+            "Run monswitch list to see its inputs.",
+            file=err,
+        )
+        return EXIT_ERROR
+
+    if match.is_ambiguous:
+        strategy = Prompting() if sys.stdin.isatty() else Strict()
+        choices = [
+            Choice(
+                value=source,
+                label=f"{source.hex_code}  {source.label}",
+                note=None if source.is_verified else "unverified",
+            )
+            for source in match.matches
+        ]
+        try:
+            chosen = strategy.choose(input_query, choices)
+        except Declined as exc:
+            print(f"{PROGRAM}: {exc}", file=err)
+            return EXIT_ERROR
+        destination = chosen if isinstance(chosen, InputSource) else match.matches[0]
+    else:
+        destination = match.only
+
+    verdict = switch_confirmation(
+        monitor, destination, confirm_switch=config.confirm_switch
+    )
+
+    print(
+        f"{monitor.display_name}: {destination.hex_code} {destination.label} "
+        f"({_TIER_LABELS[destination.provenance]})",
+        file=out,
+    )
+    print(f"  resolved from {input_query!r} by {match.matched_by}", file=out)
+    print(f"  current input: {_describe_host(monitor)}", file=out)
+    print(f"  verdict: {_describe_verdict(verdict)}", file=out)
+
+    if not args.dry_run:
+        print(
+            f"\n{PROGRAM}: switching is not implemented yet, so nothing was changed.\n"
+            "Re-run with --dry-run to resolve a target without this message.",
+            file=err,
+        )
+        return EXIT_ERROR
+
+    return EXIT_OK
+
+
+def _describe_host(monitor: Monitor) -> str:
+    if monitor.host_input is None:
+        return "unknown (could not be read)"
+    source = monitor.host_input_source
+    label = source.label if source else f"0x{monitor.host_input:02x}"
+    return f"0x{monitor.host_input:02x} {label}"
+
+
+def _describe_verdict(verdict: Confirmation) -> str:
+    if verdict is Confirmation.NONE:
+        return "no confirmation needed"
+    if verdict is Confirmation.LEAVING_HOST:
+        return (
+            "would switch this monitor away from this machine, which cannot be undone "
+            "from software - confirmation required"
+        )
+    if verdict is Confirmation.UNVERIFIED_DESTINATION:
+        return (
+            "destination was inferred, not observed; it may not exist on this panel - "
+            "stronger confirmation required, even with confirm_switch = false"
+        )
+    return "refused: the current input could not be read, so the risk cannot be assessed"

@@ -294,27 +294,34 @@ class NoArgumentsTest(CliTestCase):
         self.assertIn("usage:", out)
 
 
-class WriteSurfaceTest(unittest.TestCase):
-    def test_cli_offers_no_set_command_yet(self) -> None:
-        """The write path arrives with its confirmation flow, not before."""
-        from monswitch.cli import build_parser
+class WriteSurfaceTest(CliTestCase):
+    """`set` can resolve a target, but still cannot change anything."""
 
-        subcommands = {
-            choice
-            for action in build_parser()._actions  # noqa: SLF001 - our own parser
-            if action.choices
-            for choice in action.choices
-        }
+    def setUp(self) -> None:
+        super().setUp()
+        self.one_hp()
 
-        self.assertEqual(subcommands, {"list"})
+    def test_set_without_dry_run_refuses_and_changes_nothing(self) -> None:
+        code, _, err = self.run_cli("set", "dp1", ddcutil=self.reference_ddcutil())
 
-    def test_set_is_rejected_as_an_unknown_command(self) -> None:
-        from monswitch.cli import main
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("not implemented yet", err)
+        self.assertIn("nothing was changed", err)
 
-        with self.assertRaises(SystemExit) as caught:
-            main(["set", "dp1"], out=io.StringIO(), err=io.StringIO())
+    def test_no_ddcutil_command_ever_contains_setvcp(self) -> None:
+        """The guarantee that matters: no code path can issue a write."""
+        ddcutil = self.reference_ddcutil()
 
-        self.assertNotEqual(caught.exception.code, 0)
+        self.run_cli("set", "dp1", ddcutil=ddcutil)
+        self.run_cli("set", "--dry-run", "dp1", ddcutil=ddcutil)
+        self.run_cli("list", ddcutil=ddcutil)
+
+        self.assertFalse(hasattr(ddcutil, "setvcp"))
+
+    def test_core_wrapper_still_exposes_no_write_method(self) -> None:
+        from monswitch.core.ddc import Ddcutil
+
+        self.assertFalse([name for name in dir(Ddcutil) if "setvcp" in name.lower()])
 
 
 if __name__ == "__main__":
