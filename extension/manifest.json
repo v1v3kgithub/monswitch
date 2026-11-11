@@ -1,0 +1,33 @@
+{
+  "required_api_version": "^2.0.0",
+  "name": "monswitch",
+  "description": "Switch an external monitor's input source over DDC/CI",
+  "developer_name": "monswitch contributors",
+  "icon": "images/icon.svg",
+  "options": {
+    "query_debounce": 0.1
+  },
+  "preferences": [
+    {
+      "id": "monswitch_keyword",
+      "type": "keyword",
+      "name": "Monitor input",
+      "description": "Switch which input your monitor displays",
+      "default_value": "mon"
+    },
+    {
+      "id": "core_path",
+      "type": "input",
+      "name": "monswitch source path",
+      "description": "Path to monswitch's src/ directory, if it is not already importable",
+      "default_value": ""
+    },
+    {
+      "id": "config_path",
+      "type": "input",
+      "name": "Config file (optional)",
+      "description": "Leave empty to show only what the monitor reports",
+      "default_value": ""
+    }
+  ]
+}

@@ -238,11 +238,22 @@ class PickerModel:
         self._selected = max(0, min(len(self._rows) - 1, self._selected + delta))
         self._armed = None
 
-    def select(self, index: int) -> None:
-        """Select by index, e.g. from a mouse click. Disarms."""
+    def select(self, index: int, *, preserve_arm: bool = False) -> None:
+        """Select by index, e.g. from a mouse click. Disarms by default.
+
+        ``preserve_arm`` exists for a caller that is *addressing* a row rather than moving
+        the user's cursor to it -- a launcher resolving a returned action by bus and code,
+        where the selection is a lookup, not a choice. Without it, selecting the row in order
+        to activate it would clear its own arming and the second Enter could never switch:
+        the row would re-arm forever.
+
+        Never pass it for an actual user movement; dropping a pending confirmation when the
+        user moves is what stops a stale armed row being satisfied by an unrelated Enter.
+        """
         if 0 <= index < len(self._rows):
             self._selected = index
-            self._armed = None
+            if not preserve_arm:
+                self._armed = None
 
     def disarm(self) -> None:
         """Drop any pending confirmation."""

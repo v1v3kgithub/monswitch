@@ -157,6 +157,16 @@ With several monitors, name one — `monswitch set 'Dell U24' hdmi`, or `-m` in 
 positional is an input; two are a monitor then an input. The parser never inspects the values
 to decide which is which, so it cannot target the wrong panel.
 
+### From Ulauncher
+
+```bash
+ln -s "$PWD/extension" ~/.local/share/ulauncher/extensions/monswitch
+```
+
+Restart Ulauncher, then type `mon`. Same filtering and the same two-step confirmation as the
+picker, because both drive the same model. Details in
+[`extension/README.md`](extension/README.md).
+
 ### The picker
 
 `monswitch` with no arguments opens a Spotlight-style popup: type to filter, arrows to move,
@@ -234,7 +244,7 @@ about an input code costs you your screen.
 - [x] `monswitch list`
 - [x] `monswitch set` with tiered confirmation
 - [x] GTK popup picker
-- [ ] [Ulauncher](https://ulauncher.io/) extension
+- [x] [Ulauncher](https://ulauncher.io/) extension — see [`extension/`](extension/README.md)
 - [ ] `monswitch learn` — confirm codes by walking the monitor's own menu
 
 394 tests, none of which need a monitor: the parsers are pure functions over captured

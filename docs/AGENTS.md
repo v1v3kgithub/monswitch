@@ -38,7 +38,12 @@ widgets and key events only, and the Ulauncher extension is meant to reuse the s
 on the user's screen unannounced. Verify it by importing the module and testing `PickerModel`;
 leave running it to the user.
 
-Not yet built: `learn`, the Ulauncher extension.
+The Ulauncher extension lives in `extension/`. Its logic is in `core/launcher.py` (items,
+actions, the cached snapshot) and it reuses `PickerModel` for filtering and confirmation, so
+the launcher and the GTK picker cannot drift apart on the two-step Enter. `extension/main.py`
+translates to Ulauncher's API and does nothing else.
+
+Not yet built: `learn`.
 
 Design is settled in [`adr/`](adr/) — 13 ADRs, indexed in [`adr/README.md`](adr/README.md).
 **Read the ADRs before coding**, 0009–0013 especially: they carry the safety-critical rules and
