@@ -100,7 +100,7 @@ A narrow sudoers rule for just this one binary:
 
 ```bash
 sudo tee /etc/sudoers.d/ddcutil <<'SUDOERS'
-devuser ALL=(root) NOPASSWD: /usr/bin/ddcutil
+<your-username> ALL=(root) NOPASSWD: /usr/bin/ddcutil
 SUDOERS
 sudo chmod 0440 /etc/sudoers.d/ddcutil
 ```

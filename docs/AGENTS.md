@@ -98,7 +98,7 @@ From live, read-only probing of the dev machine. Trust them over your priors.
 
    On the dev machine the ACL route is already satisfied and **no group change is needed** —
    verified 2026-11-09: the user is not in `i2c`, yet `ddcutil --bus 16 getvcp 60` succeeds
-   unprivileged, because logind grants `user:devuser:rw-` to the holder of the local seat
+   unprivileged, because logind grants `user:<you>:rw-` to the holder of the local seat
    (`Seat=seat0`, `Remote=no`).
 
    That ACL follows the local seat, so it does **not** apply over SSH or to a systemd system
@@ -139,7 +139,7 @@ API v2 — manifest needs `"required_api_version": "^2.0.0"`).
 
 Local setup state (verified 2026-11-09): `ddcutil` installed, `/dev/i2c-*` present. The user is
 **not** in the `i2c` group and **does not need to be** — logind `uaccess` grants POSIX ACLs
-`user:devuser:rw-` on `/dev/i2c-6`–`/dev/i2c-19`, the DRM-connector buses. Non-root `ddcutil`
+`user:<you>:rw-` on `/dev/i2c-6`–`/dev/i2c-19`, the DRM-connector buses. Non-root `ddcutil`
 works as-is; `sudo` is not required. (An earlier doc claimed the opposite. Re-verify with
 `getfacl /dev/i2c-16` rather than trusting either claim.)
 
