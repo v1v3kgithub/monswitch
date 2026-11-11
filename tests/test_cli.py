@@ -451,7 +451,17 @@ class NoArgumentsTest(CliTestCase):
 
     `run_picker` is patched throughout: these tests must never put a real window on the
     developer's screen, and a GTK main loop in a test suite would hang it.
+
+    `GTK_AVAILABLE` is patched too, because what is under test is the CLI's wiring rather
+    than GTK. Without that these passed only where PyGObject happened to be installed and
+    failed in CI, which is the hidden environment dependency CI exists to find.
     """
+
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = mock.patch("monswitch.gtk_picker.GTK_AVAILABLE", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_no_monitors_fails_before_opening_a_window(self) -> None:
         """An empty popup explains nothing, so report on the terminal instead."""
@@ -531,6 +541,43 @@ class NoArgumentsTest(CliTestCase):
 
         self.assertEqual(code, EXIT_ERROR)
         self.assertIn("GTK exploded", err)
+
+
+class GtkUnavailableTest(CliTestCase):
+    """What happens with no PyGObject, which is a normal state and was untested."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.one_hp()
+
+    def test_explains_how_to_install_gtk(self) -> None:
+        with (
+            mock.patch("monswitch.gtk_picker.GTK_AVAILABLE", False),
+            mock.patch(
+                "monswitch.gtk_picker.gtk_import_error", return_value="No module named 'gi'"
+            ),
+        ):
+            code, _, err = self.run_cli(ddcutil=self.reference_ddcutil(), with_config=False)
+
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("python3-gi", err)
+
+    def test_says_the_other_commands_still_work(self) -> None:
+        """A missing picker must not read as a broken install."""
+        with (
+            mock.patch("monswitch.gtk_picker.GTK_AVAILABLE", False),
+            mock.patch("monswitch.gtk_picker.gtk_import_error", return_value="nope"),
+        ):
+            _, _, err = self.run_cli(ddcutil=self.reference_ddcutil(), with_config=False)
+
+        self.assertIn("monswitch list", err)
+
+    def test_list_works_without_gtk(self) -> None:
+        with mock.patch("monswitch.gtk_picker.GTK_AVAILABLE", False):
+            code, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("HP Z38c", out)
 
 
 class WriteSurfaceTest(CliTestCase):

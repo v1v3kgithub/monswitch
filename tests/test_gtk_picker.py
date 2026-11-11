@@ -108,17 +108,28 @@ class VersionPinningTest(unittest.TestCase):
 
     @unittest.skipUnless(gtk_picker.GTK_AVAILABLE, "PyGObject/GTK not available")
     def test_no_pygi_version_warning(self) -> None:
-        """The warning preceded the crash and is the signal that a pin is missing."""
-        result = _subprocess_check(
-            "import warnings\n"
-            "warnings.simplefilter('error')\n"
-            "import monswitch.gtk_picker\n"
-            "from gi.repository import Gtk, Gdk\n"
-            "print('ok')\n"
+        """The warning preceded the crash and is the signal that a pin is missing.
+
+        Asserts on the specific warning rather than turning all warnings into errors. An
+        earlier version used ``simplefilter('error')``, which passed locally and failed in CI
+        because PyGObject emits unrelated deprecation warnings there -- promoting those to
+        errors made the import fail and said nothing about version pinning.
+        """
+        code = NEWLINE.join(
+            [
+                "import warnings",
+                "warnings.simplefilter('always')",
+                "import monswitch.gtk_picker",
+                "from gi.repository import Gtk, Gdk",
+                "print('ok')",
+            ]
         )
+
+        result = _subprocess_check(code)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("PyGIWarning", result.stderr)
+        self.assertNotIn("without specifying a version", result.stderr)
 
     @unittest.skipUnless(gtk_picker.GTK_AVAILABLE, "PyGObject/GTK not available")
     def test_the_gtk3_only_api_the_picker_uses_exists(self) -> None:
