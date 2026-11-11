@@ -264,7 +264,7 @@ about an input code costs you your screen.
 
 ## Status
 
-`list`, `set` and the picker work. Read-only operations are safe to run freely.
+Everything on the roadmap below is built. Read-only operations are safe to run freely.
 
 - [x] `monswitch list`
 - [x] `monswitch set` with tiered confirmation
@@ -272,9 +272,9 @@ about an input code costs you your screen.
 - [x] [Ulauncher](https://ulauncher.io/) extension — see [`extension/`](extension/README.md)
 - [x] `monswitch confirm` — record that an input code is real, clearing its warning
 
-394 tests, none of which need a monitor: the parsers are pure functions over captured
+461 tests, none of which need a monitor: the parsers are pure functions over captured
 fixtures, and the write path is tested through a fake runner. No test has ever issued a
-`setvcp`.
+`setvcp`, and CI asserts it cannot.
 
 Tested against an HP Z38c over USB-C on Intel `i915`, Ubuntu, `ddcutil` 1.4.1. **Reports from
 other hardware are the most useful thing you can contribute** — especially the output of
