@@ -19,8 +19,8 @@ they use daily. Those are ``live`` or ``confirmed`` by construction, so the bypa
 to the *leaving the host* question only. It is not an assertion that a guessed code is safe,
 and ADR-0009 is explicit that the opt-out does not extend there. Overriding the unverified
 warning therefore takes ``--force``, a separate and deliberately less convenient flag. The
-better answer is to confirm the input once — with ``learn`` or a config entry — after which it
-is ``confirmed`` and ``--yes`` covers it like anything else.
+better answer is to confirm the input once — with ``monswitch confirm`` or a config entry —
+after which it is ``confirmed`` and ``--yes`` covers it like anything else.
 
 None of this authorises an automated agent to switch anything. An agent needs a human
 agreeing in the moment, whatever the flags and config say.

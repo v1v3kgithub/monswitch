@@ -18,6 +18,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import MappingProxyType
 
 from monswitch.core.config import (
     Config,
@@ -26,6 +27,10 @@ from monswitch.core.config import (
     config_path,
     load,
     load_tolerant,
+    render,
+    render_snippet,
+    save,
+    with_confirmed_input,
 )
 
 REFERENCE_TOML = """
@@ -275,3 +280,110 @@ class ImmutabilityTest(ConfigTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WriteTest(ConfigTestCase):
+    """Rendering and saving. `tomllib` only reads, so this TOML is emitted by hand."""
+
+    def test_round_trips_through_load(self) -> None:
+        config = with_confirmed_input(Config(), "DEMOSERIAL", 0x0F, "Desktop PC")
+        config = with_confirmed_input(config, "DEMOSERIAL", 0x13, "This Laptop")
+        path = self.write(render(config), name="out.toml")
+
+        reloaded = load(path)
+
+        self.assertEqual(
+            dict(reloaded.for_monitor("DEMOSERIAL").inputs),
+            {0x0F: "Desktop PC", 0x13: "This Laptop"},
+        )
+
+    def test_rendering_is_stable(self) -> None:
+        config = with_confirmed_input(Config(), "A", 0x11, "TV")
+        path = self.write(render(config), name="stable.toml")
+
+        self.assertEqual(render(load(path)), render(config))
+
+    def test_escapes_quotes_and_backslashes(self) -> None:
+        """A name is free text, so it can contain anything TOML needs escaped."""
+        config = with_confirmed_input(Config(), "K", 0x0F, 'He said "hi" \\ bye')
+        path = self.write(render(config), name="esc.toml")
+
+        self.assertEqual(load(path).for_monitor("K").inputs[0x0F], 'He said "hi" \\ bye')
+
+    def test_quotes_keys_containing_colons(self) -> None:
+        """The fallback identity key is mfg:model:connector (ADR-0013)."""
+        config = with_confirmed_input(Config(), "HPN:HP Z38c:DP-1", 0x11, "TV")
+        path = self.write(render(config), name="key.toml")
+
+        self.assertIn("HPN:HP Z38c:DP-1", load(path).monitors)
+
+    def test_preserves_an_existing_name(self) -> None:
+        config = Config(monitors=MappingProxyType({"K": MonitorConfig(name="Desk", inputs={})}))
+
+        updated = with_confirmed_input(config, "K", 0x0F, "DP")
+
+        self.assertEqual(updated.for_monitor("K").name, "Desk")
+        self.assertEqual(dict(updated.for_monitor("K").inputs), {0x0F: "DP"})
+
+    def test_confirming_twice_overwrites_the_label(self) -> None:
+        config = with_confirmed_input(Config(), "K", 0x0F, "Old")
+
+        updated = with_confirmed_input(config, "K", 0x0F, "New")
+
+        self.assertEqual(dict(updated.for_monitor("K").inputs), {0x0F: "New"})
+
+    def test_unnamed_confirmation_falls_back_to_the_code(self) -> None:
+        config = with_confirmed_input(Config(), "K", 0x1B)
+
+        self.assertEqual(config.for_monitor("K").inputs[0x1B], "0x1b")
+
+    def test_rejects_an_out_of_range_code(self) -> None:
+        for code in (-1, 256):
+            with self.subTest(code=code), self.assertRaises(ConfigError):
+                with_confirmed_input(Config(), "K", code)
+
+    def test_rejects_an_empty_key(self) -> None:
+        with self.assertRaises(ConfigError):
+            with_confirmed_input(Config(), "", 0x0F)
+
+    def test_does_not_mutate_the_original(self) -> None:
+        original = with_confirmed_input(Config(), "K", 0x0F, "DP")
+
+        with_confirmed_input(original, "K", 0x11, "HDMI")
+
+        self.assertEqual(dict(original.for_monitor("K").inputs), {0x0F: "DP"})
+
+    def test_snippet_is_loadable_on_its_own(self) -> None:
+        path = self.write(render_snippet("K", 0x0F, "DP"), name="snip.toml")
+
+        self.assertEqual(load(path).for_monitor("K").inputs[0x0F], "DP")
+
+    def test_save_creates_the_file_and_parent(self) -> None:
+        target = self.dir / "nested" / "deep" / "config.toml"
+
+        save(with_confirmed_input(Config(), "K", 0x0F, "DP"), target)
+
+        self.assertTrue(target.exists())
+        self.assertEqual(load(target).for_monitor("K").inputs[0x0F], "DP")
+
+    def test_save_keeps_a_backup_of_the_previous_file(self) -> None:
+        """Rendering cannot preserve comments, so the old file is not simply replaced."""
+        target = self.write("confirm_switch = false  # a comment\n", name="existing.toml")
+
+        backup = save(with_confirmed_input(load(target), "K", 0x0F, "DP"), target)
+
+        self.assertNotEqual(backup, target)
+        self.assertIn("# a comment", backup.read_text())
+        self.assertNotIn("# a comment", target.read_text())
+
+    def test_save_reports_the_target_when_there_was_nothing_to_back_up(self) -> None:
+        target = self.dir / "fresh.toml"
+
+        self.assertEqual(save(Config(), target), target)
+
+    def test_save_preserves_confirm_switch(self) -> None:
+        target = self.write("confirm_switch = false\n", name="pref.toml")
+
+        save(load(target), target)
+
+        self.assertFalse(load(target).confirm_switch)

@@ -43,7 +43,9 @@ actions, the cached snapshot) and it reuses `PickerModel` for filtering and conf
 the launcher and the GTK picker cannot drift apart on the two-step Enter. `extension/main.py`
 translates to Ulauncher's API and does nothing else.
 
-Not yet built: `learn`.
+Everything on the roadmap is built. `confirm` replaced `learn`, which ADR-0015 withdrew as
+unbuildable: the DDC/CI link dies the moment the monitor leaves your input, so there is
+nothing to observe while the user cycles inputs.
 
 Design is settled in [`adr/`](adr/) — 13 ADRs, indexed in [`adr/README.md`](adr/README.md).
 **Read the ADRs before coding**, 0009–0013 especially: they carry the safety-critical rules and
@@ -68,7 +70,8 @@ From live, read-only probing of the dev machine. Trust them over your priors.
    built-in fallback code table was removed, because it invented rows for inputs the panel
    never mentioned and those are the ones whose selection blanks the screen unrecoverably.
    Every `InputSource` still carries a provenance tier (ADR-0009) and the UI must show it.
-   `learn` is the optional pass that promotes a code to `confirmed`.
+   `monswitch confirm` is how a code reaches `confirmed` — it records the user's assertion
+   rather than observing anything, because observation is impossible (ADR-0015).
 
    Also per ADR-0014: **config is opt-in.** Nothing is read without `--config PATH` or
    `--use-default-config`, so a bare `monswitch list` shows exactly what the hardware said.
@@ -171,7 +174,7 @@ physical buttons — so it is the user's call to make, at the monitor, not an ag
 | `monswitch set <input>` | Auto-targets the only external monitor (ADR-0004) |
 | `monswitch set <monitor> <input>` | Two positionals = monitor then input. Arity alone decides; the parser never inspects values to assign roles (ADR-0013) |
 | `monswitch -m <monitor> set <input>` | Always unambiguous; the form for scripts. `-m` plus two positionals is an error |
-| `monswitch learn` | *Optional* OSD walk-through promoting guessed codes to `confirmed`. Not a prerequisite for anything |
+| `monswitch confirm [<monitor>] <code> [--as NAME]` | Record that a code drives a real port, clearing its unverified warning. Prints the config snippet; `--write` saves it, keeping a `.bak`. Accepts codes the monitor never reported (ADR-0015) |
 | `monswitch` (no args) | GTK3 popup picker (ADR-0008) |
 
 `--refresh` forces re-probing, bypassing the fallback bus cache. `-y`/`--yes`/`--force` are

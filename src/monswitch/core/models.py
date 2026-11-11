@@ -60,7 +60,7 @@ class Provenance(IntEnum):
     """Observed as the current value of ``getvcp 60``. Definitely real."""
 
     CONFIRMED = 3
-    """Confirmed by the user, via ``learn`` or an explicit config entry."""
+    """Asserted by the user, via ``monswitch confirm`` or an explicit config entry."""
 
     @property
     def is_verified(self) -> bool:

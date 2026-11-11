@@ -51,6 +51,10 @@ __all__ = [
     "config_path",
     "load",
     "load_tolerant",
+    "render",
+    "render_snippet",
+    "save",
+    "with_confirmed_input",
 ]
 
 _EMPTY: Mapping[int, str] = MappingProxyType({})
@@ -264,3 +268,121 @@ def _parse_code(text: object) -> int | None:
     except ValueError:
         return None
     return value if 0 <= value <= 0xFF else None
+
+
+# ---------------------------------------------------------------------------
+# Writing
+#
+# `tomllib` reads but does not write, and the core is standard-library only
+# (ADR-0005), so the small amount of TOML this project emits is rendered here.
+#
+# Rendering loses anything the model does not represent: comments, key order,
+# and settings this version does not know about. So a caller that writes a file
+# in place must say so, and `monswitch confirm` defaults to printing the snippet
+# rather than editing the file for you.
+# ---------------------------------------------------------------------------
+
+
+def _toml_escape(value: str) -> str:
+    """Escape a string for a TOML basic string, per the spec's escape list."""
+    out = []
+    for char in value:
+        if char == "\\":
+            out.append("\\\\")
+        elif char == '"':
+            out.append('\\"')
+        elif char == "\n":
+            out.append("\\n")
+        elif char == "\t":
+            out.append("\\t")
+        elif char == "\r":
+            out.append("\\r")
+        elif ord(char) < 0x20 or ord(char) == 0x7F:
+            out.append(f"\\u{ord(char):04X}")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def _toml_string(value: str) -> str:
+    return f'"{_toml_escape(value)}"'
+
+
+def with_confirmed_input(config: Config, key: str, code: int, name: str | None = None) -> Config:
+    """A copy of ``config`` with ``code`` confirmed for the monitor ``key``.
+
+    Confirming is an assertion by the user that the code drives a real port on that panel,
+    which is what promotes it past the warnings of ADR-0009. It deliberately does **not**
+    require the code to have been reported by the monitor: a code the firmware never
+    mentioned is exactly the case the user may need to record by hand.
+    """
+    if not 0 <= code <= 0xFF:
+        raise ConfigError(f"input code out of range: {code!r}")
+    if not key:
+        raise ConfigError("a monitor key is required")
+
+    existing = config.for_monitor(key)
+    inputs = dict(existing.inputs)
+    inputs[code] = (name or f"0x{code:02x}").strip()
+
+    monitors = dict(config.monitors)
+    monitors[key] = MonitorConfig(name=existing.name, inputs=MappingProxyType(inputs))
+
+    return Config(
+        confirm_switch=config.confirm_switch,
+        monitors=MappingProxyType(monitors),
+        path=config.path,
+        exists=config.exists,
+    )
+
+
+def render(config: Config) -> str:
+    """Render a :class:`Config` as TOML.
+
+    Only what the model holds: comments and unknown keys in an existing file are not
+    preserved, which is why :func:`render_snippet` exists for the common case.
+    """
+    lines = [f"confirm_switch = {'true' if config.confirm_switch else 'false'}"]
+
+    for key in sorted(config.monitors):
+        entry = config.monitors[key]
+        lines.append("")
+        # The parent table is only emitted when it carries something: TOML creates it
+        # implicitly for [monitors."X".inputs], and an empty header is noise in a file the
+        # user is expected to read and edit (ADR-0007).
+        if entry.name:
+            lines.append(f"[monitors.{_toml_string(key)}]")
+            lines.append(f"name = {_toml_string(entry.name)}")
+        if entry.inputs:
+            if entry.name:
+                lines.append("")
+            lines.append(f"[monitors.{_toml_string(key)}.inputs]")
+            for code in sorted(entry.inputs):
+                lines.append(f'"0x{code:02x}" = {_toml_string(entry.inputs[code])}')
+
+    return "\n".join(lines) + "\n"
+
+
+def render_snippet(key: str, code: int, name: str | None = None) -> str:
+    """Just the table for one confirmed input, for a user to paste into their own file."""
+    label = (name or f"0x{code:02x}").strip()
+    return f'[monitors.{_toml_string(key)}.inputs]\n"0x{code:02x}" = {_toml_string(label)}\n'
+
+
+def save(config: Config, path: Path) -> Path:
+    """Write ``config`` to ``path``, keeping one backup of whatever was there.
+
+    Returns the backup's path, or the target when there was nothing to back up. Rendering
+    cannot preserve comments, so the previous file is kept rather than silently replaced.
+    """
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    backup = path.with_suffix(path.suffix + ".bak")
+    if path.exists():
+        backup.write_bytes(path.read_bytes())
+    else:
+        backup = path
+
+    path.write_text(render(config), encoding="utf-8")
+    return backup

@@ -6,13 +6,13 @@ above it is presentation. Both front-ends call this and render what it returns.
 Per ADR-0001 there is no mandatory calibration step, so the input list is *synthesised* from
 three sources of differing trustworthiness, each contributing a provenance tier (ADR-0009):
 
-==================  ==============  ======================================================
-Source              Tier            What it actually proves
-==================  ==============  ======================================================
-Config / ``learn``  ``CONFIRMED``   A human checked this code drives this port
-``getvcp 60``       ``LIVE``        The code is real; the monitor is on it right now
-``capabilities``    ``REPORTED``    The firmware admits it; existence unverified
-==================  ==============  ======================================================
+====================  ============  ====================================================
+Source                Tier          What it actually proves
+====================  ============  ====================================================
+``confirm`` / config  ``CONFIRMED``  A human asserts this code drives a real port
+``getvcp 60``         ``LIVE``       The code is real; the monitor is on it right now
+``capabilities``      ``REPORTED``   The firmware admits it; existence unverified
+====================  ============  ====================================================
 
 Every input comes from the monitor or from the user. ADR-0014 removed a fourth source -- a
 built-in table of codes common across vendors -- because it manufactured rows for inputs the

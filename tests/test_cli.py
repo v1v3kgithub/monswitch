@@ -125,7 +125,7 @@ class ListTest(CliTestCase):
         _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
 
         self.assertIn("inferred, not observed", out)
-        self.assertIn("monswitch learn", out)
+        self.assertIn("monswitch confirm", out)
 
     def test_header_does_not_repeat_the_model(self) -> None:
         _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
@@ -577,3 +577,130 @@ class WriteSurfaceTest(CliTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfirmTest(CliTestCase):
+    """`monswitch confirm` (ADR-0015), which replaced the unbuildable `learn`."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.one_hp()
+
+    def test_prints_a_snippet_without_writing(self) -> None:
+        """Default is print, because rewriting a hand-edited file is not a side effect to
+        take without being asked."""
+        before = self.config.read_text()
+
+        code, out, _ = self.run_cli(
+            "confirm", "0x0f", "--as", "Desktop PC", ddcutil=self.reference_ddcutil()
+        )
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("[monitors.", out)
+        self.assertIn("Desktop PC", out)
+        self.assertEqual(self.config.read_text(), before)
+
+    def test_write_saves_and_clears_the_unverified_warning(self) -> None:
+        self.run_cli(
+            "confirm",
+            "0x0f",
+            "--as",
+            "Desktop PC",
+            "--write",
+            ddcutil=self.reference_ddcutil(),
+        )
+
+        _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
+
+        dp = next(line for line in out.splitlines() if "0x0f" in line)
+        self.assertIn("confirmed", dp)
+        self.assertNotIn("unverified", dp)
+        self.assertIn("Desktop PC", dp)
+
+    def test_confirms_a_code_the_monitor_never_reported(self) -> None:
+        """The whole point: a firmware that omits an input cannot be the limit of what the
+        user may record."""
+        self.run_cli(
+            "confirm",
+            "0x1b",
+            "--as",
+            "Second USB-C",
+            "--write",
+            ddcutil=self.reference_ddcutil(),
+        )
+
+        _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
+
+        self.assertIn("Second USB-C", out)
+
+    def test_reuses_the_monitors_own_name_when_none_is_given(self) -> None:
+        self.run_cli("confirm", "0x0f", "--write", ddcutil=self.reference_ddcutil())
+
+        _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
+
+        self.assertIn("DisplayPort-1", out)
+
+    def test_rejects_a_non_code(self) -> None:
+        code, _, err = self.run_cli("confirm", "zz", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, 2)
+        self.assertIn("not an input code", err)
+
+    def test_rejects_an_out_of_range_code(self) -> None:
+        code, _, err = self.run_cli("confirm", "0x1234", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, 2)
+        self.assertIn("not an input code", err)
+
+    def test_refuses_when_two_monitors_share_an_identity(self) -> None:
+        """Overrides would be withheld anyway (ADR-0013), so writing them would do nothing.
+
+        Two serial-less panels on the same connector name of different cards collide on the
+        fallback key -- and are indistinguishable to the selector too, so the message has to
+        name the real obstacle rather than asking the user to pick one.
+        """
+        make_connector(self.root / "card2", "card2-DP-1", bus=22, edid=LGD_EDID)
+        make_connector(self.root / "card3", "card3-DP-1", bus=23, edid=LGD_EDID)
+
+        code, _, err = self.run_cli(
+            "confirm",
+            "LGD",
+            "0x0f",
+            "--write",
+            ddcutil=FakeDdcutil(live={16: 0x13, 22: 0x0F, 23: 0x0F}),
+        )
+
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("share the identity", err)
+
+    def test_several_monitors_requires_naming_one(self) -> None:
+        make_connector(self.root, "card1-DP-2", bus=17, edid=LGD_EDID)
+
+        code, _, err = self.run_cli(
+            "confirm", "0x0f", ddcutil=FakeDdcutil(live={16: 0x13, 17: 0x0F})
+        )
+
+        self.assertEqual(code, 2)
+        self.assertIn("say which one", err)
+
+    def test_accepts_a_monitor_then_a_code(self) -> None:
+        code, out, _ = self.run_cli("confirm", "Z38c", "0x0f", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("confirmed", out)
+
+    def test_no_monitor_is_an_error(self) -> None:
+        self.root = self.dir / "empty-drm"
+        self.root.mkdir()
+
+        code, _, err = self.run_cli("confirm", "0x0f")
+
+        self.assertEqual(code, EXIT_ERROR)
+        self.assertIn("no external monitor", err)
+
+    def test_writes_nothing_on_a_bad_code(self) -> None:
+        before = self.config.read_text()
+
+        self.run_cli("confirm", "zz", "--write", ddcutil=self.reference_ddcutil())
+
+        self.assertEqual(self.config.read_text(), before)

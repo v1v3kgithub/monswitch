@@ -21,7 +21,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
-from .core.config import Config, config_path, load_tolerant
+from .core.config import (
+    Config,
+    ConfigError,
+    config_path,
+    load_tolerant,
+    render_snippet,
+    save,
+    with_confirmed_input,
+)
 from .core.ddc import (
     Ddcutil,
     DdcutilError,
@@ -47,7 +55,7 @@ __all__ = ["main"]
 PROGRAM = "monswitch"
 VERSION = "0.0.0"
 
-SUBCOMMANDS = frozenset({"list", "set"})
+SUBCOMMANDS = frozenset({"list", "set", "confirm"})
 """Command names, so an option that swallows one can be detected rather than obeyed."""
 
 USE_DEFAULT_CONFIG = "~default~"
@@ -179,6 +187,37 @@ def build_parser() -> argparse.ArgumentParser:
             "unverified input; confirm that input first, or use --force"
         ),
     )
+    confirmer = subcommands.add_parser(
+        "confirm",
+        parents=[common],
+        help="record that an input code is real, clearing its unverified warning",
+        description=(
+            "Record that an input code drives a real port on a monitor. This is your "
+            "assertion, not an observation: use it for a code you have switched to "
+            "successfully. Prints the config snippet; pass --write to save it."
+        ),
+    )
+    confirmer.add_argument(
+        "target",
+        nargs="+",
+        metavar="[MONITOR] INPUT",
+        help="an input code, optionally preceded by a monitor",
+    )
+    confirmer.add_argument(
+        "--as",
+        dest="label",
+        metavar="NAME",
+        help="a friendly name for this input, e.g. --as 'Desktop PC'",
+    )
+    confirmer.add_argument(
+        "--write",
+        action="store_true",
+        help=(
+            "save to the config file instead of printing it. Rewrites the file from its "
+            "parsed contents, so comments are lost; the previous file is kept as .bak"
+        ),
+    )
+
     setter.add_argument(
         "--force",
         action="store_true",
@@ -240,6 +279,9 @@ def main(
 
     if args.command == "list":
         return _run_list(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
+
+    if args.command == "confirm":
+        return _run_confirm(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
 
     if args.command == "set":
         return _run_set(args, parser, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
@@ -375,7 +417,7 @@ def _print_notes(
         print(
             "\nInputs marked unverified were inferred, not observed. Switching to one may "
             "leave the monitor dark with no way back from software; "
-            "run monswitch learn to confirm them.",
+            "run monswitch confirm <code> once you know an input works.",
             file=out,
         )
 
@@ -717,3 +759,162 @@ def _run_picker(
     if outcome.switched:
         print(f"{PROGRAM}: switched.", file=out)
     return EXIT_OK
+
+
+def _run_confirm(
+    args: argparse.Namespace,
+    *,
+    ddcutil: Ddcutil | None,
+    drm_root: Path,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Record that an input code is real (ADR-0015).
+
+    This replaces the `learn` command that was never built. `learn` was to poll ``getvcp 60``
+    while the user cycled inputs on the monitor's own menu -- which cannot work on hardware
+    that drops the link when it leaves your input, because the channel you would learn
+    through dies at the moment of the first switch. So instead of observing, this records the
+    user's assertion: they switched to that input successfully, so they know the code works.
+
+    Deliberately does not require the code to be in the discovered list. A code the monitor
+    never reported is precisely what a user may need to record by hand.
+    """
+    split = _split_target(args.target, args.monitor)
+    if split is None:
+        print(
+            f"{PROGRAM}: expected 'confirm <input>' or 'confirm <monitor> <input>'",
+            file=err,
+        )
+        return EXIT_USAGE
+
+    monitor_query, input_query = split
+
+    code = _parse_input_code(input_query)
+    if code is None:
+        print(
+            f"{PROGRAM}: {input_query!r} is not an input code. Give a hex code such as "
+            "0x0f (run monswitch list to see the codes a monitor reports).",
+            file=err,
+        )
+        return EXIT_USAGE
+
+    config = _load_config(args, err)
+
+    try:
+        # Unlike the launcher path, this is a command the user deliberately ran once, so the
+        # ~3.1s capabilities probe is affordable -- and worth it, because it supplies the
+        # name to reuse when none is given.
+        result = discover(ddcutil, root=drm_root, include_capabilities=True)
+    except DdcutilError as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
+        return EXIT_ERROR
+
+    candidates = _select(result.monitors, monitor_query)
+    if not candidates:
+        if monitor_query:
+            print(f"{PROGRAM}: no monitor matches {monitor_query!r}", file=err)
+        else:
+            _report_nothing_found(result, out=out, err=err, verbose=args.verbose)
+        return EXIT_ERROR
+
+    if len(candidates) > 1:
+        # When the candidates share one identity key, "say which one" is advice the user
+        # cannot follow: identical identities are also identical to the selector, so no query
+        # can separate them. Report the real obstacle instead (ADR-0013).
+        keys = {keyed.key for keyed in candidates}
+        if len(keys) == 1:
+            print(
+                f"{PROGRAM}: two connected monitors share the identity {keys.pop()!r}, so a "
+                "confirmed input cannot be attributed to either. Disconnect one, or give "
+                "them separate connector-keyed entries in the config.",
+                file=err,
+            )
+            return EXIT_ERROR
+
+        print(f"{PROGRAM}: several monitors are connected; say which one:", file=err)
+        for keyed in candidates:
+            print(f"  - {keyed.monitor.display_name}  (key {keyed.key})", file=err)
+        return EXIT_USAGE
+
+    keyed = candidates[0]
+
+    if keyed.collides:
+        # Defence in depth: assign_keys withholds this monitor's overrides anyway, so writing
+        # them would be a quiet no-op.
+        print(
+            f"{PROGRAM}: {keyed.monitor.display_name} shares the identity {keyed.key!r} "
+            "with another connected monitor, so confirmed inputs cannot be attributed to "
+            "it. Disconnect the other monitor, or key one by connector in the config.",
+            file=err,
+        )
+        return EXIT_ERROR
+
+    label = args.label or _existing_label(keyed, code)
+
+    try:
+        updated = with_confirmed_input(config, keyed.key, code, label)
+    except ConfigError as exc:
+        print(f"{PROGRAM}: {exc}", file=err)
+        return EXIT_USAGE
+
+    print(
+        f"{keyed.monitor.display_name}: 0x{code:02x}"
+        + (f" ({label})" if label else "")
+        + " confirmed",
+        file=out,
+    )
+
+    if not args.write:
+        target = args.config if isinstance(args.config, str) else config_path()
+        print(file=out)
+        print(render_snippet(keyed.key, code, label).rstrip(), file=out)
+        print(file=out)
+        print(
+            f"Add that to {target}, or re-run with --write to save it. "
+            "Then pass --use-default-config (or --config PATH) to apply it.",
+            file=out,
+        )
+        return EXIT_OK
+
+    destination = (
+        Path(args.config)
+        if isinstance(args.config, str) and args.config != USE_DEFAULT_CONFIG
+        else config_path()
+    )
+    try:
+        backup = save(updated, destination)
+    except OSError as exc:
+        print(f"{PROGRAM}: could not write {destination}: {exc}", file=err)
+        return EXIT_ERROR
+
+    print(f"  saved to {destination}", file=out)
+    if backup != destination:
+        print(f"  previous file kept as {backup}", file=out)
+        print(
+            "  (the file is rewritten from its parsed contents, so any comments are gone)",
+            file=out,
+        )
+    print(
+        f"  apply it with: {PROGRAM} --config {destination} list",
+        file=out,
+    )
+    return EXIT_OK
+
+
+def _parse_input_code(text: str) -> int | None:
+    """Parse a hex input code for `confirm`, with or without the ``0x`` prefix."""
+    cleaned = text.strip().lower().removeprefix("0x")
+    if not cleaned or len(cleaned) > 2:
+        return None
+    try:
+        value = int(cleaned, 16)
+    except ValueError:
+        return None
+    return value if 0 <= value <= 0xFF else None
+
+
+def _existing_label(keyed: KeyedMonitor, code: int) -> str | None:
+    """Reuse the name the monitor already gave this input, if it gave one."""
+    source = keyed.monitor.input_for(code)
+    return source.name if source and source.name else None

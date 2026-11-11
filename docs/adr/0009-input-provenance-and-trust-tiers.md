@@ -1,7 +1,10 @@
 # Input Provenance Tracking and Trust-Tiered Confirmation
 
-> **Status:** Accepted · **Date:** 2026-11-09
+> **Status:** Superseded in part · **Date:** 2026-11-09
 > **Refines:** [ADR-0001](0001-zero-config-dynamic-discovery.md), [ADR-0002](0002-switch-confirmation-and-safety.md), [ADR-0008](0008-gtk-popup-picker-ux.md)
+> **Superseded in part by:** [ADR-0015](0015-confirm-replaces-learn.md), which withdraws
+> `learn` — the promotion path named below — as unbuildable, and replaces it with
+> `monswitch confirm`. The tiers themselves stand unchanged.
 
 ADR-0001 replaced the mandatory `learn` calibration step with zero-config dynamic discovery:
 the input list is synthesised by merging the live `getvcp 60` value, the `capabilities` report,

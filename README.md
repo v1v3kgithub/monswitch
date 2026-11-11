@@ -152,6 +152,7 @@ monswitch list                  # what's connected, which input is live
 monswitch set dp1               # switch, with confirmation
 monswitch set --dry-run dp1     # resolve and explain, change nothing
 monswitch                       # popup picker (bind it to a hotkey)
+monswitch confirm 0x0f --as "Desktop PC"   # record that a code is real
 ```
 
 Inputs can be named however you think of them — `dp1`, `hdmi`, `usbc`, `0x13`, or a nickname
@@ -197,6 +198,26 @@ name = "Desk Ultrawide"
 Naming an input under `[inputs]` marks it **confirmed** — you are asserting the code drives a
 real port — which clears the unverified warning for it. The key is whatever `monswitch list`
 prints as `key`.
+
+`monswitch confirm` writes those entries for you:
+
+```console
+$ monswitch confirm 0x0f --as "Desktop PC"
+HP Z38c: 0x0f (Desktop PC) confirmed
+
+[monitors."DEMOSERIAL".inputs]
+"0x0f" = "Desktop PC"
+```
+
+It prints the snippet by default; `--write` saves it and keeps the previous file as `.bak`.
+It accepts codes your monitor never reported, which is the point — if the firmware omits an
+input, confirming it by hand is the only way in.
+
+Why "assert" rather than "detect": the obvious design was a `learn` command that watches
+`getvcp 60` while you cycle inputs on the monitor's buttons. That cannot work. The moment the
+monitor leaves your input it drops the link, and DDC/CI rides that link, so the tool goes
+blind exactly when it would need to be watching —
+[ADR-0015](docs/adr/0015-confirm-replaces-learn.md) has the measurements.
 
 ---
 
@@ -249,7 +270,7 @@ about an input code costs you your screen.
 - [x] `monswitch set` with tiered confirmation
 - [x] GTK popup picker
 - [x] [Ulauncher](https://ulauncher.io/) extension — see [`extension/`](extension/README.md)
-- [ ] `monswitch learn` — confirm codes by walking the monitor's own menu
+- [x] `monswitch confirm` — record that an input code is real, clearing its warning
 
 394 tests, none of which need a monitor: the parsers are pure functions over captured
 fixtures, and the write path is tested through a fake runner. No test has ever issued a
