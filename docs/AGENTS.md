@@ -38,7 +38,9 @@ widgets and key events only, and the Ulauncher extension is meant to reuse the s
 on the user's screen unannounced. Verify it by importing the module and testing `PickerModel`;
 leave running it to the user.
 
-The Ulauncher extension lives in `extension/`. Its logic is in `core/launcher.py` (items,
+The Ulauncher extension lives at the **repository root** (`manifest.json`, `main.py`,
+`images/`, `versions.json`), because Ulauncher's URL installer clones a repo and expects them
+there rather than in a subdirectory. Its logic is in `core/launcher.py` (items,
 actions, the cached snapshot) and it reuses `PickerModel` for filtering and confirmation, so
 the launcher and the GTK picker cannot drift apart on the two-step Enter. `extension/main.py`
 translates to Ulauncher's API and does nothing else.

@@ -4,7 +4,7 @@ Design decisions for monswitch. These are the authoritative design record — th
 supersede any older sketch in `README.md` or the agent docs. Domain vocabulary lives in
 [`../CONTEXT.md`](../CONTEXT.md).
 
-Read 0009 through 0015 before writing code: they carry the safety-critical rules and they
+Read 0009 through 0016 before writing code: they carry the safety-critical rules and they
 amend several of the earlier eight.
 
 | ADR | Decision | Status | Relations |
@@ -18,12 +18,13 @@ amend several of the earlier eight.
 | [0007](0007-config-schema.md) | Serial-keyed TOML config schema | **Superseded in part** | Superseded in part by 0013, 0014 |
 | [0008](0008-gtk-popup-picker-ux.md) | GTK3 Spotlight-style popup picker | Accepted | Refined by 0009, 0011 |
 | [0009](0009-input-provenance-and-trust-tiers.md) | Input provenance (`confirmed`/`live`/`reported`/`guessed`) and trust-tiered confirmation | **Superseded in part** | Refines 0001, 0002, 0008; superseded in part by 0015 |
-| [0010](0010-sysfs-first-monitor-resolution.md) | Resolve monitors from sysfs; `ddcutil detect` is the fallback | Accepted | Supersedes in part 0003 |
+| [0010](0010-sysfs-first-monitor-resolution.md) | Resolve monitors from sysfs; `ddcutil detect` is the fallback | **Superseded in part** | Supersedes in part 0003; superseded in part by 0016 |
 | [0011](0011-graphical-disambiguation-and-failure-surfacing.md) | Explicit interaction strategy; typed errors rendered per frontend | Accepted | Refines 0006, 0008 |
 | [0012](0012-packaging-and-module-resolution.md) | Extension-directory install with path wiring; no import-time side effects | Accepted | Refines 0005 |
 | [0013](0013-identity-host-input-and-target-resolution.md) | Host Input derived not stored; identity fallback chain; `set` arity | Accepted | Supersedes in part 0007; refines 0004, 0010 |
 | [0014](0014-report-only-what-the-monitor-says.md) | No speculative input rows; config is opt-in | Accepted | Supersedes in part 0001, 0007; refines 0009 |
 | [0015](0015-confirm-replaces-learn.md) | `learn` withdrawn as unbuildable; `confirm` records the user's assertion | Accepted | Supersedes in part 0001, 0009 |
+| [0016](0016-cached-capabilities-on-the-launcher-path.md) | `capabilities` on the launcher path, cached by monitor identity | Accepted | Supersedes in part 0010; refines 0012, 0014 |
 
 ## The safety spine
 

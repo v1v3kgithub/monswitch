@@ -383,7 +383,9 @@ class ExtensionShapeTest(unittest.TestCase):
 
     @property
     def extension_dir(self) -> Path:
-        return Path(__file__).parent.parent / "extension"
+        # The extension lives at the repository root: Ulauncher's URL installer clones a
+        # repo and expects manifest.json and main.py there, not in a subdirectory.
+        return Path(__file__).parent.parent
 
     def test_manifest_declares_api_v2(self) -> None:
         manifest = json.loads((self.extension_dir / "manifest.json").read_text())

@@ -44,6 +44,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .capcache import CachedCapabilities, CapabilitiesCache
 from .ddc import Ddcutil, DdcutilError, DdcutilParseError
 from .edid import EdidIdentity
 from .models import (
@@ -102,6 +103,8 @@ def discover(
     include_capabilities: bool = False,
     confirmed_inputs: Mapping[str, Mapping[int, str]] | None = None,
     name_overrides: Mapping[str, str] | None = None,
+    capabilities_cache: CapabilitiesCache | None = None,
+    refresh_capabilities: bool = False,
 ) -> Discovery:
     """Find monitors and build their input lists.
 
@@ -143,8 +146,15 @@ def discover(
     for (identity, bus, connector), key in zip(candidates, keys, strict=True):
         label = identity.model or f"{identity.manufacturer} on {connector}"
         host_input = _read_host_input(runner, bus, label, warnings)
-        reported, firmware_unnamed = _read_capabilities(
-            runner, bus, label, warnings, enabled=include_capabilities
+        reported, firmware_unnamed = _capabilities_for(
+            runner,
+            bus,
+            key,
+            label,
+            warnings,
+            enabled=include_capabilities,
+            cache=capabilities_cache,
+            refresh=refresh_capabilities,
         )
 
         trusted = key not in colliding
@@ -257,44 +267,6 @@ def _read_host_input(
         return None
 
 
-def _read_capabilities(
-    runner: Ddcutil,
-    bus: int,
-    label: str,
-    warnings: list[MonitorWarning],
-    *,
-    enabled: bool,
-) -> tuple[dict[int, str | None], set[int]]:
-    """Read advertised inputs, returning named entries and the firmware-unnamed codes.
-
-    The two are returned separately because they are treated differently: a named entry is
-    ``REPORTED``, while a code the firmware could not name is held at ``GUESSED`` and denied a
-    name from any other source (ADR-0009).
-    """
-    if not enabled:
-        return {}, set()
-
-    try:
-        entries = runner.capabilities_inputs(bus)
-    except (DdcutilError, DdcutilParseError) as exc:
-        warnings.append(
-            MonitorWarning(
-                monitor=label,
-                message=f"advertised inputs could not be read: {exc}",
-            )
-        )
-        return {}, set()
-
-    named: dict[int, str | None] = {}
-    unnamed: set[int] = set()
-    for entry in entries:
-        if entry.name is None:
-            unnamed.add(entry.code)
-        else:
-            named[entry.code] = entry.name
-    return named, unnamed
-
-
 def _assemble_inputs(
     *,
     host_input: int | None,
@@ -333,3 +305,63 @@ def _assemble_inputs(
         else InputSource(code=source.code, name=None, provenance=source.provenance)
         for source in merged
     )
+
+
+def _capabilities_for(
+    runner: Ddcutil,
+    bus: int,
+    key: str,
+    label: str,
+    warnings: list[MonitorWarning],
+    *,
+    enabled: bool,
+    cache: CapabilitiesCache | None,
+    refresh: bool,
+) -> tuple[dict[int, str | None], set[int]]:
+    """Reported inputs for one monitor, from the cache when possible (ADR-0016).
+
+    ``capabilities`` describes the panel's firmware, which does not change between runs, so a
+    cache hit is as good as a probe and costs nothing. That is what lets a launcher afford the
+    data at all: without it the only input in the list is the one already live, which is no
+    list at all.
+
+    Cached entries re-enter as ``REPORTED``, exactly as a fresh probe would. Nothing here can
+    promote an input past the ADR-0009 warning.
+    """
+    if not enabled:
+        return {}, set()
+
+    if cache is not None and not refresh:
+        hit = cache.get(key)
+        if hit is not None:
+            return dict(hit.named), set(hit.unnamed)
+
+    try:
+        entries = runner.capabilities_inputs(bus)
+    except (DdcutilError, DdcutilParseError) as exc:
+        warnings.append(
+            MonitorWarning(
+                monitor=label,
+                message=f"advertised inputs could not be read: {exc}",
+            )
+        )
+        return {}, set()
+
+    named: dict[int, str | None] = {}
+    unnamed: set[int] = set()
+    for entry in entries:
+        if entry.name is None:
+            unnamed.add(entry.code)
+        else:
+            named[entry.code] = entry.name
+
+    if cache is not None and (named or unnamed):
+        cache.put(
+            key,
+            CachedCapabilities(
+                named={code: name for code, name in named.items() if name},
+                unnamed=tuple(sorted(unnamed)),
+            ),
+        )
+
+    return named, unnamed

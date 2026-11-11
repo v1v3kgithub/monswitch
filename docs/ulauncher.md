@@ -8,18 +8,23 @@ Ulauncher runs extensions under the **system** interpreter, so it cannot see a v
 (ADR-0012). The extension therefore puts `monswitch` on `sys.path` itself, and all it needs is
 the path to a checkout.
 
-```bash
-# 1. symlink this directory into Ulauncher's extension folder
-mkdir -p ~/.local/share/ulauncher/extensions
-ln -s "$PWD" ~/.local/share/ulauncher/extensions/monswitch
+### From Ulauncher (normal install)
 
-# 2. restart Ulauncher
-pkill ulauncher; setsid ulauncher --no-window-shadow >/dev/null 2>&1 &
+Preferences → **Extensions** → **Add extension**, and paste the repository URL. Ulauncher
+clones it, reads `manifest.json` from the root, and the extension finds the core in the `src/`
+directory of that same clone — nothing to configure.
+
+### From a local checkout (development)
+
+```bash
+mkdir -p ~/.local/share/ulauncher/extensions
+ln -s /path/to/monswitch ~/.local/share/ulauncher/extensions/monswitch
+pkill ulauncher; setsid ulauncher >/dev/null 2>&1 &
 ```
 
-Because the extension directory sits inside the checkout, `../src` is found automatically. If
-you put it elsewhere, set the **monswitch source path** preference to the checkout's `src/`
-directory, or export `MONSWITCH_SRC`.
+Symlink the repository root, not a subdirectory. If you place it somewhere the `src/`
+directory is not alongside, set the **monswitch source path** preference, or export
+`MONSWITCH_SRC`.
 
 ## Use
 
@@ -52,7 +57,10 @@ changes.
 - Results render from a cached snapshot so typing never waits on a DDC/CI read (~0.35s per
   monitor). A row served from data that could not be refreshed asks for confirmation even if
   you have turned confirmation off — stale data must not make a switch look safe.
-- `ddcutil capabilities` is never called here; it costs ~3.1s, which has no place on a path
-  you are typing into. Run `monswitch list` for the fuller picture.
+- `ddcutil capabilities` **is** consulted, through a cache (ADR-0016). It costs ~3.1s the
+  first time a given monitor is seen and nothing afterwards, because it describes firmware
+  that does not change. Without it the list would hold only the input you are already on,
+  since ADR-0014 removed the built-in table of guessed codes. Delete
+  `~/.cache/monswitch/capabilities.json` to re-probe.
 - Needs non-root access to `/dev/i2c-*`, since a launcher has no terminal to ask for a sudo
   password on. See the main README.

@@ -33,10 +33,12 @@ def _bootstrap_import_path() -> str | None:
     if configured:
         candidates.append(Path(configured).expanduser())
 
-    # A checkout beside or above the extension directory, which is how the documented
-    # install is laid out.
+    # This file sits at the repository root, because that is where Ulauncher's installer
+    # expects manifest.json and main.py when it clones an extension from a URL. The core is
+    # therefore in ./src of the very clone Ulauncher made, and nothing needs configuring.
+    # The parent is kept as a fallback for a layout that nests the extension a level down.
     here = Path(__file__).resolve().parent
-    candidates.extend([here.parent / "src", here / "src"])
+    candidates.extend([here / "src", here.parent / "src"])
 
     for candidate in candidates:
         if (candidate / "monswitch" / "__init__.py").exists():
@@ -72,6 +74,7 @@ from ulauncher.api.shared.item.ExtensionResultItem import (
 )
 
 if BOOTSTRAP_ERROR is None:
+    from monswitch.core.capcache import CapabilitiesCache
     from monswitch.core.config import Config, load_tolerant
     from monswitch.core.ddc import DdcutilError, WriteCapableDdcutil
     from monswitch.core.discovery import discover
@@ -111,13 +114,20 @@ class MonswitchExtension(Extension):
         if self._snapshot is None:
             config = self.config()
 
+            cache = CapabilitiesCache()
+
             def run() -> object:
-                # capabilities is skipped: it costs ~3.1s, which has no place on a path the
-                # user is typing into (ADR-0010).
+                # capabilities IS consulted here, through the cache. ADR-0014 removed the
+                # built-in code table, which left capabilities as the only source of inputs
+                # other than the live one -- so without this the launcher lists a single row,
+                # the input you are already on, which is no list at all. The cache makes it
+                # affordable: ~3.1s the first time a monitor is seen, free thereafter, since
+                # capabilities describes firmware that does not change (ADR-0016).
                 return discover(
-                    include_capabilities=False,
+                    include_capabilities=True,
                     confirmed_inputs=config.confirmed_inputs(),
                     name_overrides=config.name_overrides(),
+                    capabilities_cache=cache,
                 )
 
             self._snapshot = DiscoverySnapshot(discover=run)

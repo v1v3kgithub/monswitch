@@ -1,6 +1,6 @@
 # monswitch
 
-[![CI](https://github.com/<you>/monswitch/actions/workflows/ci.yml/badge.svg)](https://github.com/<you>/monswitch/actions/workflows/ci.yml)
+[![CI](https://github.com/v1v3kgithub/monswitch/actions/workflows/ci.yml/badge.svg)](https://github.com/v1v3kgithub/monswitch/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -104,7 +104,7 @@ sudo pacman -S ddcutil python-gobject gtk3           # Arch
 ```
 
 ```bash
-git clone https://github.com/<you>/monswitch.git
+git clone https://github.com/v1v3kgithub/monswitch.git
 cd monswitch
 python3 -m venv --system-site-packages .venv   # --system-site-packages so GTK stays visible
 .venv/bin/pip install -e .
@@ -164,13 +164,11 @@ to decide which is which, so it cannot target the wrong panel.
 
 ### From Ulauncher
 
-```bash
-ln -s "$PWD/extension" ~/.local/share/ulauncher/extensions/monswitch
-```
+In Ulauncher's preferences, **Extensions → Add extension**, paste this repository's URL.
+Ulauncher clones it and finds `manifest.json` at the root.
 
-Restart Ulauncher, then type `mon`. Same filtering and the same two-step confirmation as the
-picker, because both drive the same model. Details in
-[`extension/README.md`](extension/README.md).
+Then type `mon`. Same filtering and the same two-step confirmation as the picker, because both
+drive the same model. Details in [`docs/ulauncher.md`](docs/ulauncher.md).
 
 ### The picker
 
@@ -269,10 +267,10 @@ Everything on the roadmap below is built. Read-only operations are safe to run f
 - [x] `monswitch list`
 - [x] `monswitch set` with tiered confirmation
 - [x] GTK popup picker
-- [x] [Ulauncher](https://ulauncher.io/) extension — see [`extension/`](extension/README.md)
+- [x] [Ulauncher](https://ulauncher.io/) extension — see [`docs/ulauncher.md`](docs/ulauncher.md)
 - [x] `monswitch confirm` — record that an input code is real, clearing its warning
 
-461 tests, none of which need a monitor: the parsers are pure functions over captured
+486 tests, none of which need a monitor: the parsers are pure functions over captured
 fixtures, and the write path is tested through a fake runner. No test has ever issued a
 `setvcp`, and CI asserts it cannot.
 
