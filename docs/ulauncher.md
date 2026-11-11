@@ -39,10 +39,13 @@ mon dell hdmi  → HDMI on the Dell, if you have more than one monitor
 The input your machine is currently driving is marked **current input**. Inputs the monitor
 reported but that have not been verified are marked **unverified**.
 
-**Enter twice to switch.** The first Enter turns the row into the specific warning — switching
-away means the monitor stops showing this machine and cannot be switched back from here — and
-the second carries it out. An input you are already on switches immediately, because nothing
-changes.
+**Enter switches immediately.** There is no confirmation step
+([ADR-0017](adr/0017-single-enter-in-the-graphical-front-ends.md)): selecting any input other
+than your current one means the monitor stops showing this machine, and it cannot be switched
+back from here — recovery is the monitor's own buttons. Arrow onto a row carefully.
+
+A monitor whose current input cannot be read is still refused outright, since the consequences
+of switching it cannot be assessed.
 
 ## Preferences
 

@@ -2,6 +2,8 @@
 
 > **Status:** Accepted · **Date:** 2026-11-09
 > **Refined by:** [ADR-0009](0009-input-provenance-and-trust-tiers.md)
+> **Superseded in part by:** [ADR-0017](0017-single-enter-in-the-graphical-front-ends.md) —
+> the graphical front-ends no longer confirm before leaving the Host Input. The CLI does.
 
 Switching away from the Host Input (the connection currently driving the monitor from this machine) breaks the physical DDC/CI channel, making software recovery impossible without physical monitor button access.
 

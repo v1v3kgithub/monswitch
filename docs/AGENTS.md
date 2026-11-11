@@ -30,8 +30,11 @@ that keeps `isatty()` out of the core (ADR-0011), the `set` arity rule (ADR-0013
 `monswitch set --dry-run`, the write path behind its confirmation gate (`switching.py`), and
 the GTK popup picker (`monswitch` with no arguments).
 
-The picker's logic — filtering, selection, and the two-step Enter that serves as its
-confirmation — lives in `core/picker.py` and is tested without a display. `gtk_picker.py` holds
+The picker's logic — filtering, selection, and the arming machinery — lives in
+`core/picker.py` and is tested without a display. Both graphical front-ends now pass
+`require_confirmation=False`, so **Enter switches on the first press** (ADR-0017, taken at the
+user's explicit request against the recommendation). The arming code remains the default for
+any other caller, and the CLI is unchanged. `gtk_picker.py` holds
 widgets and key events only, and the Ulauncher extension is meant to reuse the same model.
 
 **Never launch the picker from an agent session.** `Gtk.main()` blocks, and the window appears
@@ -42,7 +45,7 @@ The Ulauncher extension lives at the **repository root** (`manifest.json`, `main
 `images/`, `versions.json`), because Ulauncher's URL installer clones a repo and expects them
 there rather than in a subdirectory. Its logic is in `core/launcher.py` (items,
 actions, the cached snapshot) and it reuses `PickerModel` for filtering and confirmation, so
-the launcher and the GTK picker cannot drift apart on the two-step Enter. `extension/main.py`
+the launcher and the GTK picker cannot drift apart on activation behaviour. `main.py`
 translates to Ulauncher's API and does nothing else.
 
 Everything on the roadmap is built. `confirm` replaced `learn`, which ADR-0015 withdrew as

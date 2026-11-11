@@ -391,3 +391,68 @@ class EmptyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SingleEnterTest(unittest.TestCase):
+    """`require_confirmation=False`: the first Enter switches (ADR-0017).
+
+    This is what both graphical front-ends now pass, at the user's explicit request. The
+    arming machinery stays in the model and keeps its own tests, because it is still the
+    default and still correct for anything that wants it.
+    """
+
+    def model(self) -> PickerModel:
+        return PickerModel([keyed()], require_confirmation=False)
+
+    def test_leaving_the_host_switches_immediately(self) -> None:
+        subject = self.model()
+        subject.select(1)
+
+        self.assertEqual(subject.activate().kind, ActivationKind.SWITCH)
+
+    def test_unverified_input_switches_immediately(self) -> None:
+        """The warning is still shown on the row; it just no longer costs a keypress."""
+        subject = PickerModel([keyed(HP, USBC, JUNK)], require_confirmation=False)
+        subject.select(1)
+
+        self.assertEqual(subject.activate().kind, ActivationKind.SWITCH)
+
+    def test_nothing_is_ever_armed(self) -> None:
+        subject = self.model()
+
+        for index in range(len(subject.rows)):
+            with self.subTest(index=index):
+                subject.select(index)
+                subject.activate()
+                self.assertIsNone(subject.armed_row)
+
+    def test_an_unreadable_monitor_is_still_refused(self) -> None:
+        """Fail-closed is not a confirmation step, so removing confirmation must not lose it."""
+        subject = PickerModel(
+            [keyed(HP, USBC, DESKTOP, host_input=None)], require_confirmation=False
+        )
+        subject.select(1)
+
+        self.assertEqual(subject.activate().kind, ActivationKind.BLOCKED)
+
+    def test_rows_still_carry_their_provenance(self) -> None:
+        """Removing the keypress must not remove the information."""
+        subject = self.model()
+
+        notes = [row.status_note() for row in subject.rows]
+
+        self.assertIn("unverified", notes)
+        self.assertIn("current", notes)
+
+    def test_the_confirmation_verdict_is_unchanged(self) -> None:
+        """The policy still knows the switch is irreversible; the UI just does not ask."""
+        subject = self.model()
+
+        self.assertEqual(subject.rows[1].confirmation, Confirmation.LEAVING_HOST)
+        self.assertTrue(subject.rows[1].needs_confirmation)
+
+    def test_arming_remains_the_default(self) -> None:
+        subject = PickerModel([keyed()])
+        subject.select(1)
+
+        self.assertEqual(subject.activate().kind, ActivationKind.ARM)

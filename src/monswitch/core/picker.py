@@ -143,8 +143,10 @@ class PickerModel:
         monitors: Sequence[KeyedMonitor],
         *,
         confirm_switch: bool = True,
+        require_confirmation: bool = True,
     ) -> None:
         self._confirm_switch = confirm_switch
+        self._require_confirmation = require_confirmation
         self._all_rows = self._build_rows(monitors)
         self._query = ""
         self._rows = tuple(self._all_rows)
@@ -190,6 +192,15 @@ class PickerModel:
         if not self._rows or not 0 <= self._selected < len(self._rows):
             return None
         return self._rows[self._selected]
+
+    @property
+    def arms_before_switching(self) -> bool:
+        """Whether activation ever asks for a second Enter.
+
+        Exposed so a front-end building its own rows reports the same behaviour the model
+        will actually take, rather than inferring it and getting it wrong.
+        """
+        return self._require_confirmation
 
     @property
     def armed_row(self) -> PickerRow | None:
@@ -279,7 +290,10 @@ class PickerModel:
                 ),
             )
 
-        if not row.needs_confirmation:
+        if not self._require_confirmation or not row.needs_confirmation:
+            # ``require_confirmation=False`` makes the first Enter switch, warnings and all.
+            # The graphical front-ends pass it at the user's explicit request (ADR-0017);
+            # the row still shows its provenance, there is simply no second keypress.
             self._armed = None
             return Activation(kind=ActivationKind.SWITCH, row=row)
 
@@ -310,6 +324,7 @@ class PickerModel:
         remaining = tuple(r for r in self._all_rows if r != row)
         clone = PickerModel.__new__(PickerModel)
         clone._confirm_switch = self._confirm_switch
+        clone._require_confirmation = self._require_confirmation
         clone._all_rows = remaining
         clone._query = ""
         clone._rows = remaining
@@ -321,6 +336,7 @@ class PickerModel:
         """A copy whose rows are re-evaluated against a different preference."""
         clone = PickerModel.__new__(PickerModel)
         clone._confirm_switch = confirm_switch
+        clone._require_confirmation = self._require_confirmation
         clone._all_rows = tuple(
             replace(
                 row,

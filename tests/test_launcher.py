@@ -432,6 +432,12 @@ class ExtensionShapeTest(unittest.TestCase):
             text.index("from monswitch.core"),
         )
 
+    def test_front_end_asks_for_single_enter(self) -> None:
+        """ADR-0017: the extension must pass require_confirmation=False explicitly."""
+        text = (self.extension_dir / "main.py").read_text()
+
+        self.assertIn("require_confirmation=False", text)
+
     def test_extension_delegates_rather_than_reimplementing(self) -> None:
         """Confirmation must come from the shared core, not a second copy here."""
         text = (self.extension_dir / "main.py").read_text()
@@ -568,3 +574,50 @@ class LauncherSessionTest(unittest.TestCase):
 
     def test_empty_query_lists_everything(self) -> None:
         self.assertEqual(len(self.session().items_for("")), 3)
+
+
+class SingleEnterSessionTest(unittest.TestCase):
+    """The launcher switches on the first Enter (ADR-0017)."""
+
+    def setUp(self) -> None:
+        self.clock = FakeClock()
+        self.snapshot = DiscoverySnapshot(
+            discover=lambda: Discovery(monitors=(keyed(),)), ttl=10.0, clock=self.clock
+        )
+        self.session = LauncherSession(snapshot=self.snapshot, require_confirmation=False)
+
+    def test_first_activation_switches(self) -> None:
+        self.session.items_for("")
+
+        kind, row = self.session.activate(ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F))
+
+        self.assertEqual(kind, ActivationKind.SWITCH)
+        self.assertIsNotNone(row)
+
+    def test_items_never_ask_for_a_second_enter(self) -> None:
+        items = self.session.items_for("")
+
+        self.assertFalse(any(item.is_warning for item in items))
+        self.assertFalse(any("Enter again" in item.subtitle for item in items))
+
+    def test_every_row_is_directly_actionable(self) -> None:
+        items = self.session.items_for("")
+
+        self.assertTrue(all(item.action.kind is ActionKind.SWITCH for item in items))
+
+    def test_rows_still_say_which_inputs_are_unverified(self) -> None:
+        items = self.session.items_for("")
+
+        self.assertTrue(any("unverified" in item.subtitle for item in items))
+
+    def test_an_unreadable_monitor_is_still_blocked(self) -> None:
+        snapshot = DiscoverySnapshot(
+            discover=lambda: Discovery(monitors=(keyed(HP, USBC, DESKTOP, host_input=None),)),
+            clock=self.clock,
+        )
+        session = LauncherSession(snapshot=snapshot, require_confirmation=False)
+        session.items_for("")
+
+        kind, _row = session.activate(ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F))
+
+        self.assertEqual(kind, ActivationKind.BLOCKED)

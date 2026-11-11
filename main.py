@@ -141,7 +141,10 @@ class MonswitchExtension(Extension):
         """
         if self._session is None:
             self._session = LauncherSession(
-                snapshot=self.snapshot(), confirm_switch=self.config().confirm_switch
+                snapshot=self.snapshot(),
+                confirm_switch=self.config().confirm_switch,
+                # One Enter switches, at the user's explicit request (ADR-0017).
+                require_confirmation=False,
             )
         return self._session
 

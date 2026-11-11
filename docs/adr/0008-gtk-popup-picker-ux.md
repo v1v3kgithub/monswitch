@@ -1,7 +1,10 @@
 # GTK3 Spotlight-Style Popup Picker UX
 
-> **Status:** Accepted · **Date:** 2026-11-09
+> **Status:** Superseded in part · **Date:** 2026-11-09
 > **Refined by:** [ADR-0009](0009-input-provenance-and-trust-tiers.md), [ADR-0011](0011-graphical-disambiguation-and-failure-surfacing.md)
+> **Superseded in part by:** [ADR-0017](0017-single-enter-in-the-graphical-front-ends.md),
+> which withdraws the two-step Enter below: one press now switches. The user asked for it
+> after finding the confirmation fired on every input of every monitor, forever.
 
 When `monswitch` is invoked without arguments (e.g. bound to a system hotkey like `Super+M`), it opens a graphical picker for fast input switching.
 

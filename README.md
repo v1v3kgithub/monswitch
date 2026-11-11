@@ -167,15 +167,19 @@ to decide which is which, so it cannot target the wrong panel.
 In Ulauncher's preferences, **Extensions → Add extension**, paste this repository's URL.
 Ulauncher clones it and finds `manifest.json` at the root.
 
-Then type `mon`. Same filtering and the same two-step confirmation as the picker, because both
-drive the same model. Details in [`docs/ulauncher.md`](docs/ulauncher.md).
+Then type `mon`. Same filtering and the same behaviour as the picker, because both drive the
+same model. Details in [`docs/ulauncher.md`](docs/ulauncher.md).
 
 ### The picker
 
 `monswitch` with no arguments opens a Spotlight-style popup: type to filter, arrows to move,
-Enter to pick, Escape to leave. The active input is marked, unverified ones are badged, and
-anything needing confirmation turns the row into the warning and waits for a second Enter.
-Escape backs out of that without closing the window.
+Enter to switch, Escape to leave. The active input is marked and unverified ones are badged.
+
+**Enter switches immediately — there is no confirmation step in the picker or the launcher**
+([ADR-0017](docs/adr/0017-single-enter-in-the-graphical-front-ends.md)). On any input other
+than the one you are on, that means the monitor stops showing this machine and cannot be
+switched back from here; recovery is the monitor's own buttons. The CLI still asks, and still
+requires `--yes` or `--force`.
 
 ### Optional config
 

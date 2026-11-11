@@ -93,7 +93,10 @@ def run_picker(
         Gtk,
     )
 
-    model = PickerModel(monitors, confirm_switch=config.confirm_switch)
+    # require_confirmation=False: one Enter switches. Asked for explicitly by the user
+    # (ADR-0017), after the two-step behaviour of ADR-0008 was found too slow in practice.
+    # Rows still show provenance, and an unreadable monitor is still refused outright.
+    model = PickerModel(monitors, confirm_switch=config.confirm_switch, require_confirmation=False)
     writer = ddcutil or WriteCapableDdcutil()
     outcome = PickerResult(cancelled=True)
 
@@ -154,7 +157,7 @@ def run_picker(
     scroller.add(listbox)
     layout.pack_start(scroller, True, True, 0)
 
-    footer = Gtk.Label(label="↑↓ move · Enter select · Esc close", xalign=0.5)
+    footer = Gtk.Label(label="↑↓ move · Enter switches · Esc close", xalign=0.5)
     footer.get_style_context().add_class("monswitch-footer")
     layout.pack_end(footer, False, False, 0)
 

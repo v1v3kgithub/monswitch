@@ -174,7 +174,7 @@ def build_items(
         armed = model.is_armed(row)
         if row.is_blocked:
             kind = ActionKind.BLOCKED
-        elif armed or not row.needs_confirmation:
+        elif armed or not row.needs_confirmation or not model.arms_before_switching:
             kind = ActionKind.SWITCH
         else:
             kind = ActionKind.ARM
@@ -265,7 +265,9 @@ class DiscoverySnapshot:
         """Force the next :meth:`get` to refresh. Call after a switch."""
         self._fetched_at = 0.0
 
-    def model(self, *, confirm_switch: bool = True) -> PickerModel:
+    def model(
+        self, *, confirm_switch: bool = True, require_confirmation: bool = True
+    ) -> PickerModel:
         """A :class:`PickerModel` over the current result.
 
         :meth:`get` refreshes first, so data that was stale but refreshed successfully is
@@ -277,7 +279,11 @@ class DiscoverySnapshot:
         result = self.get()
         monitors: Sequence[KeyedMonitor] = result.monitors
         trusted = not self.is_stale
-        return PickerModel(monitors, confirm_switch=confirm_switch if trusted else True)
+        return PickerModel(
+            monitors,
+            confirm_switch=confirm_switch if trusted else True,
+            require_confirmation=require_confirmation,
+        )
 
 
 @dataclass
@@ -300,6 +306,9 @@ class LauncherSession:
 
     snapshot: DiscoverySnapshot
     confirm_switch: bool = True
+    require_confirmation: bool = True
+    """``False`` makes the first Enter switch, as the user asked for (ADR-0017)."""
+
     _model: PickerModel | None = field(default=None, init=False, repr=False)
 
     def _ensure_model(self) -> PickerModel:
@@ -309,7 +318,10 @@ class LauncherSession:
         armed against data that has since changed.
         """
         if self._model is None or self.snapshot.is_stale:
-            self._model = self.snapshot.model(confirm_switch=self.confirm_switch)
+            self._model = self.snapshot.model(
+                confirm_switch=self.confirm_switch,
+                require_confirmation=self.require_confirmation,
+            )
         return self._model
 
     def items_for(self, query: str) -> tuple[LauncherItem, ...]:
