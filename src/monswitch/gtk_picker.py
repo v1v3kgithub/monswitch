@@ -63,6 +63,8 @@ CSS = b"""
 .monswitch-note-current { opacity: 0.9; font-weight: bold; }
 .monswitch-warning { color: #d33; font-weight: bold; }
 .monswitch-message { padding: 8px; }
+.monswitch-close { padding: 0 10px; opacity: 0.6; }
+.monswitch-footer { opacity: 0.45; font-size: 85%; padding: 6px; }
 """
 
 
@@ -104,19 +106,42 @@ def run_picker(
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
 
-    window = Gtk.Window(type=Gtk.WindowType.POPUP)
+    # TOPLEVEL, not POPUP. A POPUP window is override-redirect: the window manager does not
+    # manage it and never gives it keyboard focus, so no key events arrive at all -- which
+    # took Escape and type-to-filter with it. A decorationless TOPLEVEL with a dialog type
+    # hint is what Spotlight-style launchers actually use: frameless as ADR-0008 requires,
+    # but focusable.
+    window = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
     window.set_name("monswitch-popup")
     window.get_style_context().add_class("monswitch-popup")
+    window.set_decorated(False)
     window.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
-    window.set_default_size(520, 360)
+    window.set_default_size(520, 380)
     window.set_keep_above(True)
+    window.set_skip_taskbar_hint(True)
+    window.set_skip_pager_hint(True)
+    window.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+    window.set_modal(True)
+    window.set_focus_on_map(True)
+    window.set_accept_focus(True)
+    window.set_can_focus(True)
 
     layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
     window.add(layout)
 
+    header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
     entry = Gtk.SearchEntry()
     entry.set_placeholder_text("Type to filter inputs…")
-    layout.pack_start(entry, False, False, 0)
+    header.pack_start(entry, True, True, 0)
+
+    # A visible way out, for anyone reaching for the mouse rather than Escape.
+    close_button = Gtk.Button(label="✕")
+    close_button.set_relief(Gtk.ReliefStyle.NONE)
+    close_button.set_tooltip_text("Close (Esc)")
+    close_button.get_style_context().add_class("monswitch-close")
+    close_button.set_can_focus(False)
+    header.pack_end(close_button, False, False, 0)
+    layout.pack_start(header, False, False, 0)
 
     message_label = Gtk.Label(xalign=0.0)
     message_label.get_style_context().add_class("monswitch-message")
@@ -129,6 +154,12 @@ def run_picker(
     listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
     scroller.add(listbox)
     layout.pack_start(scroller, True, True, 0)
+
+    footer = Gtk.Label(
+        label="↑↓ move · Enter select · Esc close", xalign=0.5
+    )
+    footer.get_style_context().add_class("monswitch-footer")
+    layout.pack_end(footer, False, False, 0)
 
     def show_message(text: str | None) -> None:
         if text:
@@ -255,12 +286,29 @@ def run_picker(
         show_message(None)
         refresh()
 
+    # Dismiss-on-focus-loss only once focus has actually been held. Without this guard, a
+    # window that never gained focus in the first place closes itself the instant the
+    # compositor tells it so, and the picker appears not to open at all.
+    had_focus = False
+
+    def on_focus_in(_widget: object, _event: object) -> bool:
+        nonlocal had_focus
+        had_focus = True
+        return False
+
     def on_focus_out(_widget: object, _event: object) -> bool:
-        window.close()
+        if had_focus:
+            window.close()
         return False
 
     entry.connect("search-changed", on_changed)
+    close_button.connect("clicked", lambda *_: window.close())
     window.connect("key-press-event", on_key)
+    # Also on the entry: it has keyboard focus, and connecting here means Escape and the
+    # arrow keys still work even if a GTK theme or input method consumes them before the
+    # toplevel handler sees them.
+    entry.connect("key-press-event", on_key)
+    window.connect("focus-in-event", on_focus_in)
     window.connect("focus-out-event", on_focus_out)
     window.connect("destroy", lambda *_: Gtk.main_quit())
 
@@ -269,6 +317,9 @@ def run_picker(
     window.show_all()
     if not message:
         message_label.hide()
+
+    # present() asks the window manager for focus; show_all() alone does not.
+    window.present_with_time(Gdk.CURRENT_TIME)
     entry.grab_focus()
     Gtk.main()
 

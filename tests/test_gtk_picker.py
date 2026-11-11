@@ -26,6 +26,9 @@ from pathlib import Path
 
 import monswitch.gtk_picker as gtk_picker
 
+NEWLINE = chr(10)
+"""Built at runtime so these test sources carry no escape sequences."""
+
 SOURCE = Path(gtk_picker.__file__)
 SRC_ROOT = SOURCE.parent.parent
 
@@ -132,6 +135,85 @@ class VersionPinningTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "ok")
+
+
+class WindowBehaviourTest(unittest.TestCase):
+    """Source-level guards for the focus bug, which no logic test can reach.
+
+    The picker first shipped with Gtk.WindowType.POPUP. A POPUP is override-redirect: the
+    window manager does not manage it and never gives it keyboard focus, so no key events
+    arrived -- taking Escape and type-to-filter with them. These assertions are coarse, but
+    they pin the specific mistake, and the alternative is no coverage at all short of driving
+    a real X server.
+    """
+
+    def setUp(self) -> None:
+        self.text = SOURCE.read_text()
+
+    def test_uses_a_focusable_toplevel_not_a_popup(self) -> None:
+        self.assertIn("Gtk.WindowType.TOPLEVEL", self.text)
+        self.assertNotIn("Gtk.WindowType.POPUP", self.text)
+
+    def test_stays_frameless(self) -> None:
+        """ADR-0008 wants no frame; TOPLEVEL alone would draw titlebar decorations."""
+        self.assertIn("set_decorated(False)", self.text)
+
+    def test_asks_the_window_manager_for_focus(self) -> None:
+        """show_all() does not request focus; present() does."""
+        self.assertIn("present_with_time", self.text)
+
+    def test_binds_escape(self) -> None:
+        self.assertIn("Gdk.KEY_Escape", self.text)
+
+    def test_has_a_close_affordance(self) -> None:
+        self.assertIn("close_button", self.text)
+        self.assertIn('close_button.connect("clicked"', self.text)
+
+    def test_key_handler_is_bound_to_both_window_and_entry(self) -> None:
+        """The entry holds focus, so a theme or input method could consume keys first."""
+        self.assertIn('window.connect("key-press-event", on_key)', self.text)
+        self.assertIn('entry.connect("key-press-event", on_key)', self.text)
+
+    def test_focus_loss_dismissal_is_guarded(self) -> None:
+        """Closing on focus-out before ever holding focus makes the picker never appear."""
+        self.assertIn("had_focus", self.text)
+
+    @unittest.skipUnless(gtk_picker.GTK_AVAILABLE, "PyGObject/GTK not available")
+    def test_every_gtk_api_used_exists(self) -> None:
+        """Catches a typo'd or GTK4-only call without constructing a window."""
+        code = NEWLINE.join([
+            "import monswitch.gtk_picker",
+            "from gi.repository import Gtk, Gdk",
+            "names = [",
+            "    (Gtk.WindowType, 'TOPLEVEL'), (Gdk.WindowTypeHint, 'DIALOG'),",
+            "    (Gtk.ReliefStyle, 'NONE'), (Gdk, 'CURRENT_TIME'),",
+            "    (Gtk.Window, 'present_with_time'), (Gtk.Window, 'set_accept_focus'),",
+            "    (Gtk.Window, 'set_focus_on_map'), (Gtk.Window, 'set_decorated'),",
+            "    (Gtk.Window, 'set_skip_taskbar_hint'), (Gtk.Button, 'set_relief'),",
+            "    (Gtk, 'SearchEntry'),",
+            "]",
+            "missing = [n for obj, n in names if not hasattr(obj, n)]",
+            "assert not missing, missing",
+            "print('ok')",
+        ])
+
+        result = _subprocess_check(code)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "ok")
+
+    @unittest.skipUnless(gtk_picker.GTK_AVAILABLE, "PyGObject/GTK not available")
+    def test_css_parses(self) -> None:
+        code = NEWLINE.join([
+            "import monswitch.gtk_picker as gp",
+            "from gi.repository import Gtk",
+            "Gtk.CssProvider().load_from_data(gp.CSS)",
+            "print('ok')",
+        ])
+
+        result = _subprocess_check(code)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class AvailabilityTest(unittest.TestCase):
