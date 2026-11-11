@@ -1,7 +1,8 @@
 # Serial-Keyed TOML Configuration Schema
 
 > **Status:** Superseded in part · **Date:** 2026-11-09
-> **Superseded in part by:** [ADR-0013](0013-identity-host-input-and-target-resolution.md)
+> **Superseded in part by:** [ADR-0013](0013-identity-host-input-and-target-resolution.md),
+> [ADR-0014](0014-report-only-what-the-monitor-says.md) (config is read only when requested)
 
 MonitorSwitcher supports optional user customizations for friendly display names, input aliases, and safety preferences in `~/.config/monswitch/config.toml`.
 

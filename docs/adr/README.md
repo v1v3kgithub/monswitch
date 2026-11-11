@@ -4,7 +4,7 @@ Design decisions for MonitorSwitcher. These are the authoritative design record 
 supersede any older sketch in `README.md` or the agent docs. Domain vocabulary lives in
 [`../CONTEXT.md`](../CONTEXT.md).
 
-Read 0009 through 0013 before writing code: they carry the safety-critical rules and they
+Read 0009 through 0014 before writing code: they carry the safety-critical rules and they
 amend several of the earlier eight.
 
 | ADR | Decision | Status | Relations |
@@ -22,6 +22,7 @@ amend several of the earlier eight.
 | [0011](0011-graphical-disambiguation-and-failure-surfacing.md) | Explicit interaction strategy; typed errors rendered per frontend | Accepted | Refines 0006, 0008 |
 | [0012](0012-packaging-and-module-resolution.md) | Extension-directory install with path wiring; no import-time side effects | Accepted | Refines 0005 |
 | [0013](0013-identity-host-input-and-target-resolution.md) | Host Input derived not stored; identity fallback chain; `set` arity | Accepted | Supersedes in part 0007; refines 0004, 0010 |
+| [0014](0014-report-only-what-the-monitor-says.md) | No speculative input rows; config is opt-in | Accepted | Supersedes in part 0001, 0007; refines 0009 |
 
 ## The safety spine
 

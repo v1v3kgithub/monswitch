@@ -4,7 +4,7 @@ This is the core's main entry point. Everything below it is a parser or a wrappe
 above it is presentation. Both front-ends call this and render what it returns.
 
 Per ADR-0001 there is no mandatory calibration step, so the input list is *synthesised* from
-four sources of differing trustworthiness, and each contributes a provenance tier (ADR-0009):
+three sources of differing trustworthiness, each contributing a provenance tier (ADR-0009):
 
 ==================  ==============  ======================================================
 Source              Tier            What it actually proves
@@ -12,8 +12,12 @@ Source              Tier            What it actually proves
 Config / ``learn``  ``CONFIRMED``   A human checked this code drives this port
 ``getvcp 60``       ``LIVE``        The code is real; the monitor is on it right now
 ``capabilities``    ``REPORTED``    The firmware admits it; existence unverified
-Fallback table      ``GUESSED``     Other vendors' panels use it. May not exist here
 ==================  ==============  ======================================================
+
+Every input comes from the monitor or from the user. ADR-0014 removed a fourth source -- a
+built-in table of codes common across vendors -- because it manufactured rows for inputs the
+panel had never mentioned, and those are the rows whose selection blanks the screen
+unrecoverably.
 
 Merging is ``max()`` on the tier, so a code seen live outranks one merely reported.
 
@@ -28,9 +32,10 @@ The firmware saying "I don't know what this is" is evidence against the table, n
 **A failed live read does not hide the monitor.** It is listed, with ``host_input=None``, which
 makes it unswitchable per ADR-0013 and surfaces as a warning rather than silence (ADR-0011).
 
-A caveat on the fallback table's names: they are cross-vendor generalisations. ``0x13`` is
-USB-C on HP, and may be something else entirely elsewhere. That is exactly why table entries
-are ``GUESSED`` and why ``learn`` exists — it replaces the guess with the user's own answer.
+A consequence worth knowing: a code seen only in the live read carries no name, because
+nothing trustworthy supplied one. ``0x13`` on the reference panel therefore displays as
+``0x13`` rather than "USB-C". That is the honest rendering — the name would have been a guess
+about a vendor-specific code — and a config nickname is how a user attaches one.
 """
 
 from __future__ import annotations
@@ -55,29 +60,11 @@ from .sysfs import DEFAULT_DRM_ROOT, resolve
 
 __all__ = [
     "Discovery",
-    "FALLBACK_INPUT_CODES",
     "MonitorWarning",
     "discover",
 ]
 
 
-# Input codes seen in the wild: standard MCCS values plus vendor extensions. Seeded from the
-# table in README.md. These names are *guesses* about an unknown panel, so every entry
-# sourced from here is tiered GUESSED and always prompts before a switch.
-#
-# 0x1f is deliberately absent. The reference panel reports it as "Unrecognized value", and it
-# is the one code known to be firmware junk on real hardware; speculating a name for it would
-# be exactly the invented label ADR-0009 forbids.
-FALLBACK_INPUT_CODES: Mapping[int, str] = MappingProxyType(
-    {
-        0x0F: "DisplayPort-1",
-        0x10: "DisplayPort-2",
-        0x11: "HDMI-1",
-        0x12: "HDMI-2",
-        0x13: "USB-C",
-        0x1B: "USB-C / Thunderbolt",
-    }
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +105,6 @@ def discover(
     include_capabilities: bool = False,
     confirmed_inputs: Mapping[str, Mapping[int, str]] | None = None,
     name_overrides: Mapping[str, str] | None = None,
-    include_fallback_codes: bool = True,
 ) -> Discovery:
     """Find monitors and build their input lists.
 
@@ -131,7 +117,6 @@ def discover(
         confirmed_inputs: user-confirmed code maps, keyed by identity key (ADR-0013). Supplied
             by the config layer; an empty mapping simply means nothing is confirmed yet.
         name_overrides: user-supplied monitor names, keyed by identity key.
-        include_fallback_codes: whether to pad the list with :data:`FALLBACK_INPUT_CODES`.
 
     Never raises for a single unreadable monitor: the failure becomes a warning and the other
     monitors are still returned.
@@ -171,7 +156,6 @@ def discover(
             reported=reported,
             firmware_unnamed=firmware_unnamed,
             confirmed=confirmed_by_key.get(key, {}) if trusted else {},
-            include_fallback_codes=include_fallback_codes,
         )
 
         monitors.append(
@@ -320,16 +304,13 @@ def _assemble_inputs(
     reported: Mapping[int, str | None],
     firmware_unnamed: set[int],
     confirmed: Mapping[int, str],
-    include_fallback_codes: bool,
 ) -> tuple[InputSource, ...]:
-    """Merge every source into one tiered input list."""
-    found: list[InputSource] = []
+    """Merge every reported source into one tiered input list.
 
-    if include_fallback_codes:
-        for code, name in FALLBACK_INPUT_CODES.items():
-            found.append(
-                InputSource(code=code, name=name, provenance=Provenance.GUESSED)
-            )
+    Every input here was mentioned by the monitor itself or by the user. Nothing is added
+    speculatively -- see ADR-0014 for why the built-in code table was removed.
+    """
+    found: list[InputSource] = []
 
     for code in firmware_unnamed:
         # Held at GUESSED, and given no name: the firmware explicitly disclaimed this value.

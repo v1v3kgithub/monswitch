@@ -58,10 +58,15 @@ From live, read-only probing of the dev machine. Trust them over your priors.
    and *contains* junk (`1f`). Never build the input list from `capabilities` alone, and never
    treat it as complete. It also costs 3.1 s, so keep it off interactive paths.
 
-   Per ADR-0001 there is **no mandatory `learn` step**: the input list is synthesised from the
-   live read + `capabilities` + a fallback code table. Because that synthesis guesses, every
-   `InputSource` carries a provenance tier (ADR-0009) and the UI must show it. `learn` survives
-   only as an optional pass that promotes guesses to `confirmed`.
+   Per ADR-0001 there is **no mandatory `learn` step**. Per **ADR-0014** the input list
+   contains only codes the monitor reported, observed live, or the user supplied — the
+   built-in fallback code table was removed, because it invented rows for inputs the panel
+   never mentioned and those are the ones whose selection blanks the screen unrecoverably.
+   Every `InputSource` still carries a provenance tier (ADR-0009) and the UI must show it.
+   `learn` is the optional pass that promotes a code to `confirmed`.
+
+   Also per ADR-0014: **config is opt-in.** Nothing is read without `--config PATH` or
+   `--use-default-config`, so a bare `monswitch list` shows exactly what the hardware said.
 
 2. **`getvcp 60` prints `Invalid value (sl=0x13)`** for vendor codes. Not an error to fix —
    `0x13` is the real current input. Parse the `sl=0x..` value; do not trust ddcutil's verdict.

@@ -26,7 +26,7 @@ from monswitch.core.ddc import (
     I2cPermissionDenied,
     NoMonitorOnBus,
 )
-from monswitch.core.discovery import FALLBACK_INPUT_CODES, discover
+from monswitch.core.discovery import discover
 from monswitch.core.models import Provenance
 
 from test_sysfs import HP_EDID, LGD_EDID, make_connector
@@ -169,61 +169,76 @@ class ReferenceMachineTest(DiscoveryTestCase):
         self.assertFalse(result.used_detect_fallback)
 
 
-class FallbackTableTest(DiscoveryTestCase):
-    def test_fallback_codes_are_guessed(self) -> None:
+class NoSpeculativeInputsTest(DiscoveryTestCase):
+    """ADR-0014: nothing appears that the monitor or the user did not mention.
+
+    The built-in code table used to pad every list with 0x10, 0x12 and 0x1b. On the reference
+    panel none of those exist, and selecting a non-existent input is the case that blanks the
+    screen with no software route back -- so the padding manufactured precisely the most
+    dangerous rows.
+    """
+
+    def test_only_reported_and_live_inputs_appear(self) -> None:
+        self.one_hp()
+
+        monitor = discover(
+            FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
+            root=self.root,
+            include_capabilities=True,
+        ).monitors[0].monitor
+
+        self.assertEqual([i.code for i in monitor.inputs], [0x0F, 0x11, 0x13, 0x1F])
+
+    def test_codes_the_panel_never_mentioned_are_absent(self) -> None:
+        self.one_hp()
+
+        monitor = discover(
+            FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
+            root=self.root,
+            include_capabilities=True,
+        ).monitors[0].monitor
+
+        for absent in (0x10, 0x12, 0x1B):
+            with self.subTest(code=absent):
+                self.assertIsNone(monitor.input_for(absent))
+
+    def test_without_capabilities_only_the_live_input_appears(self) -> None:
+        """The honest minimum: one row, because one input is all the monitor has admitted."""
         self.one_hp()
 
         monitor = discover(
             FakeDdcutil(live={16: 0x13}), root=self.root
         ).monitors[0].monitor
 
-        hdmi2 = monitor.input_for(0x12)
+        self.assertEqual([i.code for i in monitor.inputs], [0x13])
 
-        assert hdmi2 is not None
-        self.assertEqual(hdmi2.provenance, Provenance.GUESSED)
-        self.assertFalse(hdmi2.is_verified)
-
-    def test_fallback_codes_can_be_disabled(self) -> None:
+    def test_live_only_code_carries_no_invented_name(self) -> None:
+        """0x13 is vendor-specific; naming it 'USB-C' would be a guess about this panel."""
         self.one_hp()
 
         monitor = discover(
-            FakeDdcutil(live={16: 0x13}), root=self.root, include_fallback_codes=False
+            FakeDdcutil(live={16: 0x13}), root=self.root
         ).monitors[0].monitor
-
-        self.assertEqual([i.code for i in monitor.inputs], [0x13])
-
-    def test_table_excludes_the_known_junk_code(self) -> None:
-        """0x1f is firmware junk on real hardware; the table must not speculate a name."""
-        self.assertNotIn(0x1F, FALLBACK_INPUT_CODES)
-
-    def test_live_code_outranks_its_table_entry(self) -> None:
-        self.one_hp()
-
-        monitor = discover(FakeDdcutil(live={16: 0x13}), root=self.root).monitors[0].monitor
 
         usbc = monitor.input_for(0x13)
 
         assert usbc is not None
-        self.assertEqual(usbc.provenance, Provenance.LIVE)
-        # The table still supplies the name the live read lacked.
-        self.assertEqual(usbc.name, "USB-C")
+        self.assertIsNone(usbc.name)
+        self.assertEqual(usbc.label, "0x13")
 
-    def test_firmware_unnamed_code_does_not_inherit_a_table_name(self) -> None:
-        """Even if the table had an entry, a disclaimed code stays nameless."""
+    def test_a_config_nickname_is_how_a_name_is_supplied(self) -> None:
         self.one_hp()
-        caps = (CapabilityInput(code=0x11, name=None),)
 
         monitor = discover(
-            FakeDdcutil(live={16: 0x13}, capabilities={16: caps}),
+            FakeDdcutil(live={16: 0x13}),
             root=self.root,
-            include_capabilities=True,
+            confirmed_inputs={"DEMOSERIAL": {0x13: "This Laptop"}},
         ).monitors[0].monitor
 
-        hdmi = monitor.input_for(0x11)
+        usbc = monitor.input_for(0x13)
 
-        assert hdmi is not None
-        self.assertIsNone(hdmi.name)
-        self.assertEqual(hdmi.provenance, Provenance.GUESSED)
+        assert usbc is not None
+        self.assertEqual(usbc.label, "This Laptop")
 
 
 class ConfirmedInputsTest(DiscoveryTestCase):
@@ -270,10 +285,10 @@ class ConfirmedInputsTest(DiscoveryTestCase):
             confirmed_inputs={"SOMEONE-ELSE": {0x0F: "Wrong"}},
         ).monitors[0].monitor
 
-        dp = monitor.input_for(0x0F)
-
-        assert dp is not None
-        self.assertNotEqual(dp.name, "Wrong")
+        # Since ADR-0014 removed speculative rows, another monitor's confirmed code does not
+        # even appear: there is no other source claiming 0x0f exists on this panel.
+        self.assertIsNone(monitor.input_for(0x0F))
+        self.assertNotIn("Wrong", [i.name for i in monitor.inputs])
 
 
 class FailedReadTest(DiscoveryTestCase):
@@ -456,10 +471,12 @@ class CollisionTest(DiscoveryTestCase):
         )
 
         for keyed in result.monitors:
-            hdmi2 = keyed.monitor.input_for(0x12)
-            assert hdmi2 is not None
-            self.assertNotEqual(hdmi2.name, "Should not appear")
-            self.assertNotEqual(hdmi2.provenance, Provenance.CONFIRMED)
+            # Withheld entirely: no row, no name, and nothing at the CONFIRMED tier.
+            self.assertIsNone(keyed.monitor.input_for(0x12))
+            self.assertNotIn("Should not appear", [i.name for i in keyed.monitor.inputs])
+            self.assertNotIn(
+                Provenance.CONFIRMED, [i.provenance for i in keyed.monitor.inputs]
+            )
             self.assertNotEqual(keyed.monitor.display_name, "Should not appear either")
 
     def test_name_override_applies_when_there_is_no_collision(self) -> None:

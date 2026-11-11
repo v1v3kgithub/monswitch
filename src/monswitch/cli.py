@@ -47,6 +47,12 @@ __all__ = ["main"]
 PROGRAM = "monswitch"
 VERSION = "0.0.0"
 
+SUBCOMMANDS = frozenset({"list", "set"})
+"""Command names, so an option that swallows one can be detected rather than obeyed."""
+
+USE_DEFAULT_CONFIG = "~default~"
+"""Sentinel for a bare ``--config``: use the standard path rather than a named file."""
+
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_USAGE = 2
@@ -79,12 +85,28 @@ def _common_flags() -> argparse.ArgumentParser:
             "prefer it in scripts"
         ),
     )
+    # Opt-in, not opt-out: nothing is read unless asked for, so what you see is what the
+    # monitor reported.
+    #
+    # --config takes a required value. It was briefly nargs="?" so that a bare --config could
+    # mean "the usual file", which is a trap: argparse fills an optional-value option from the
+    # next token, so `monswitch --config list` consumed "list" as the path, left no
+    # subcommand, and silently opened the picker instead of listing. --use-default-config is
+    # a separate flag precisely so neither can swallow the other.
     common.add_argument(
         "--config",
         metavar="PATH",
-        type=Path,
         default=argparse.SUPPRESS,
-        help=f"config file to use (default: {config_path()})",
+        help=(
+            "read overrides from this config file. Omitted, no config is read at all and "
+            "only what the monitor reports is shown"
+        ),
+    )
+    common.add_argument(
+        "--use-default-config",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=f"read overrides from {config_path()}",
     )
     common.add_argument(
         "-v",
@@ -183,17 +205,36 @@ def main(
     synthetic sysfs tree instead of real hardware.
     """
     parser = build_parser()
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
     args = parser.parse_args(argv)
     stdout = out if out is not None else sys.stdout
     stderr = err if err is not None else sys.stderr
 
     # The shared flags use SUPPRESS so the two copies cannot overwrite each other, which
     # means an unused flag is absent rather than defaulted. Fill the gaps once, here.
-    for name, default in (("monitor", None), ("config", None), ("verbose", False)):
+    for name, default in (
+        ("monitor", None),
+        ("config", None),
+        ("verbose", False),
+        ("use_default_config", False),
+    ):
         if not hasattr(args, name):
             setattr(args, name, default)
 
     if args.command is None:
+        # Guard against a value-taking option having eaten the subcommand. `monswitch
+        # --config list` parses as "config=list, no subcommand", which would silently open the
+        # picker -- a window the user did not ask for, in place of the listing they did. An
+        # option swallowing a subcommand is always a mistake, so say so instead.
+        swallowed = [token for token in raw_args if token in SUBCOMMANDS]
+        if swallowed:
+            print(
+                f"{PROGRAM}: {swallowed[0]!r} was read as the value of an option, not as a "
+                f"command. Put the command first: monswitch {swallowed[0]} [options]",
+                file=stderr,
+            )
+            return EXIT_USAGE
+
         # ADR-0008: no arguments means the popup picker.
         return _run_picker(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
 
@@ -217,9 +258,7 @@ def _run_list(
     out: TextIO,
     err: TextIO,
 ) -> int:
-    config, config_warnings = load_tolerant(args.config)
-    for warning in config_warnings:
-        print(f"{PROGRAM}: config: {warning}", file=err)
+    config = _load_config(args, err)
 
     try:
         result = discover(
@@ -438,9 +477,7 @@ def _run_set(
 
     monitor_query, input_query = split
 
-    config, config_warnings = load_tolerant(args.config)
-    for warning in config_warnings:
-        print(f"{PROGRAM}: config: {warning}", file=err)
+    config = _load_config(args, err)
 
     try:
         result = discover(
@@ -593,6 +630,36 @@ def _describe_verdict(verdict: Confirmation) -> str:
     return "refused: the current input could not be read, so the risk cannot be assessed"
 
 
+def _load_config(args: argparse.Namespace, err: TextIO) -> Config:
+    """Resolve the config according to the opt-in rule.
+
+    No ``--config`` means no file is read, so the listing is exactly what the monitor
+    reported. If a config does exist at the usual path, that is mentioned once -- silently
+    ignoring a file the user wrote would be its own trap.
+    """
+    requested = getattr(args, "config", None)
+    if requested is None and getattr(args, "use_default_config", False):
+        requested = USE_DEFAULT_CONFIG
+
+    if requested is None:
+        default = config_path()
+        if default.exists():
+            print(
+                f"{PROGRAM}: note: {default} exists but was not read; "
+                "pass --config to apply it",
+                file=err,
+            )
+        return Config(path=None, exists=False)
+
+    path = config_path() if requested == USE_DEFAULT_CONFIG else Path(requested)
+    config, warnings = load_tolerant(path)
+    for warning in warnings:
+        print(f"{PROGRAM}: config: {warning}", file=err)
+    if not config.exists and requested != USE_DEFAULT_CONFIG:
+        print(f"{PROGRAM}: config: {path} does not exist", file=err)
+    return config
+
+
 def _run_picker(
     args: argparse.Namespace,
     *,
@@ -618,9 +685,7 @@ def _run_picker(
         )
         return EXIT_ERROR
 
-    config, config_warnings = load_tolerant(args.config)
-    for warning in config_warnings:
-        print(f"{PROGRAM}: config: {warning}", file=err)
+    config = _load_config(args, err)
 
     try:
         result = discover(

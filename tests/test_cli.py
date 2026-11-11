@@ -46,11 +46,18 @@ class CliTestCase(unittest.TestCase):
         make_connector(self.root, connector, bus=bus, edid=HP_EDID)
 
     def run_cli(
-        self, *argv: str, ddcutil: FakeDdcutil | None = None
+        self, *argv: str, ddcutil: FakeDdcutil | None = None, with_config: bool = True
     ) -> tuple[int, str, str]:
+        """Run the CLI against the synthetic tree.
+
+        ``with_config`` passes --config pointing at this test's own file. It defaults to true
+        so tests exercise the config path, but no test may read the developer's real config:
+        the default path is never used.
+        """
+        prefix = ["--config", str(self.config)] if with_config else []
         out, err = io.StringIO(), io.StringIO()
         code = main(
-            ["--config", str(self.config), *argv],
+            [*prefix, *argv],
             ddcutil=ddcutil or FakeDdcutil(),
             drm_root=self.root,
             out=out,
@@ -140,6 +147,103 @@ class ListTest(CliTestCase):
         self.run_cli("list", ddcutil=ddcutil)
 
         self.assertEqual(ddcutil.capability_calls, [16])
+
+
+class ConfigOptInTest(CliTestCase):
+    """ADR-0014: no config is read unless asked for."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.one_hp()
+        self.config.write_text(
+            '[monitors."DEMOSERIAL"]\nname = "Should not be applied"\n'
+        )
+
+    def test_no_config_flag_reads_nothing(self) -> None:
+        _, out, _ = self.run_cli(
+            "list", ddcutil=self.reference_ddcutil(), with_config=False
+        )
+
+        self.assertIn("HP Z38c", out)
+        self.assertNotIn("Should not be applied", out)
+
+    def test_config_flag_applies_the_file(self) -> None:
+        _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil())
+
+        self.assertIn("Should not be applied", out)
+
+    def test_missing_config_file_is_reported_not_ignored(self) -> None:
+        code, _, err = self.run_cli(
+            "--config", str(self.dir / "absent.toml"), "list",
+            ddcutil=self.reference_ddcutil(),
+            with_config=False,
+        )
+
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("does not exist", err)
+
+    def test_use_default_config_flag_exists(self) -> None:
+        """A separate flag, so neither it nor --config can swallow the subcommand."""
+        from monswitch.cli import build_parser
+
+        options = {
+            option
+            for action in build_parser()._actions  # noqa: SLF001 - our own parser
+            for option in action.option_strings
+        }
+
+        self.assertIn("--use-default-config", options)
+
+
+class SwallowedSubcommandTest(CliTestCase):
+    """Regression: an option consuming the subcommand must not open the picker.
+
+    `monswitch --config list` parsed as "config=list, no subcommand", fell through to the
+    no-arguments branch and opened a GTK window the user never asked for, in place of the
+    listing they did ask for. It blocked in Gtk.main() until killed.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.one_hp()
+
+    def test_config_swallowing_list_is_a_usage_error(self) -> None:
+        with mock.patch("monswitch.gtk_picker.run_picker") as picker:
+            code, _, err = self.run_cli(
+                "--config", "list", ddcutil=self.reference_ddcutil(), with_config=False
+            )
+
+        picker.assert_not_called()
+        self.assertEqual(code, 2)
+        self.assertIn("read as the value of an option", err)
+
+    def test_monitor_flag_swallowing_set_is_a_usage_error(self) -> None:
+        with mock.patch("monswitch.gtk_picker.run_picker") as picker:
+            code, _, err = self.run_cli(
+                "-m", "set", ddcutil=self.reference_ddcutil(), with_config=False
+            )
+
+        picker.assert_not_called()
+        self.assertEqual(code, 2)
+
+    def test_the_error_says_how_to_fix_it(self) -> None:
+        _, _, err = self.run_cli(
+            "--config", "list", ddcutil=self.reference_ddcutil(), with_config=False
+        )
+
+        self.assertIn("monswitch list", err)
+
+    def test_a_genuine_no_argument_run_still_opens_the_picker(self) -> None:
+        """The guard must not break the actual no-arguments case."""
+        with mock.patch(
+            "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
+        ) as picker:
+            code, _, _ = self.run_cli(
+                ddcutil=self.reference_ddcutil(), with_config=False
+            )
+
+        picker.assert_called_once()
+        self.assertEqual(code, EXIT_OK)
 
 
 class FlagPositionTest(CliTestCase):
