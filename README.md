@@ -1,132 +1,37 @@
-# MonitorSwitcher
+# monswitch
 
-Switch the active **input source** of an external monitor from Linux, programmatically, over
-DDC/CI — including when the machine is attached via USB-C (DP alt mode).
+**Switch your monitor's input from the keyboard, on Linux — without guessing which inputs exist.**
 
-Target UX:
+One monitor, two machines. Your laptop is on USB-C, the desktop is on DisplayPort, and the
+only way to swap is the four buttons hidden under the monitor's bottom bezel. `monswitch` does
+it over DDC/CI instead: a popup picker on a hotkey, or one command.
 
-1. `monswitch` — invoke it, get a popup list of inputs on the detected monitor(s), pick one.
-2. A [Ulauncher](https://ulauncher.io/) extension doing the same thing without a terminal.
+```console
+$ monswitch list
+HP Z38c  (HPN)
+  bus 16 · connector DP-1 · key DEMOSERIAL
 
-> Name note: the directory is `MonitorSwitcher`; the binary/entry point is `monswitch`.
-> Alternative names considered: `ddc-switch`, `inputctl`. `monswitch` won on being short
-> enough to type into Ulauncher.
+    0x0f  DisplayPort-1          reported   (unverified)
+    0x11  HDMI-1                 reported   (unverified)
+  * 0x13  0x13                   live       (current input, this machine)
+    0x1f  0x1f                   guessed    (unverified)
+```
+
+Four inputs, and every one of them is something the monitor actually said. That is the point
+of this project, and it is harder than it sounds.
 
 ---
 
-## How it works
+## Why another one of these?
 
-Monitors implement the VESA **MCCS** control set over the **DDC/CI** channel, which rides on
-the I²C lines of the display cable (DP AUX for DisplayPort and USB-C DP-alt-mode). MCCS
-feature code **`0x60` = Input Source**. Reading it tells you the current input; writing it
-switches the monitor.
+There are plenty of DDC/CI input switchers (see [Alternatives](#alternatives)). Nearly all of
+them are a two-line wrapper around `ddcutil setvcp 60 <value>`, where `<value>` is a constant
+you worked out once for your monitor and hardcoded.
 
-`ddcutil` is the userspace tool that speaks DDC/CI, via `/dev/i2c-*` adapters exposed by the
-GPU driver (`i915` on Intel, `amdgpu`, `nvidia`).
+That works until it doesn't, for two reasons.
 
----
-
-## Prerequisites
-
-### 1. A monitor that actually supports DDC/CI
-
-Most HP / Dell / LG panels do. Some require **DDC/CI = On** in the monitor's own OSD menu
-(often under *Management* or *Settings → DDC/CI*). If `ddcutil detect` finds nothing, check
-there first.
-
-### 2. Packages
-
-Debian / Ubuntu:
-
-```bash
-sudo apt install ddcutil
-```
-
-For the GTK picker UI:
-
-```bash
-sudo apt install python3-gi gir1.2-gtk-3.0
-```
-
-Fedora: `sudo dnf install ddcutil python3-gobject gtk3`
-Arch: `sudo pacman -S ddcutil python-gobject gtk3`
-
-### 3. The `i2c-dev` kernel module
-
-Needed so `/dev/i2c-*` exists. Load now and on every boot:
-
-```bash
-sudo modprobe i2c-dev
-echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf
-```
-
-### 4. Non-root access to the I²C buses
-
-Non-root access is **required**, not optional, for the Ulauncher path: a Ulauncher extension
-runs as your user with no TTY, so it can never prompt for a sudo password.
-
-**Check whether you already have it before changing anything.** On a modern systemd desktop,
-logind's `uaccess` tag often grants your seat's user a POSIX ACL on the DRM-connector buses
-automatically — this is the case on the reference machine:
-
-```bash
-getfacl /dev/i2c-16 | grep "^user:"   # look for: user:<you>:rw-
-ddcutil detect                         # if this works without sudo, you are done
-```
-
-If that works, skip the rest of this step.
-
-Otherwise, the `ddcutil` package ships a udev rule granting the `i2c` group access:
-
-```bash
-sudo usermod -aG i2c "$USER"
-# log out and back in (or: newgrp i2c) for the new group to take effect
-```
-
-Verify:
-
-```bash
-id -nG | tr ' ' '\n' | grep -x i2c   # should print: i2c
-ddcutil detect                        # no sudo
-```
-
-Note: being absent from the `i2c` group is *not* by itself a problem — the ACL route above
-can already grant access. Test with `ddcutil detect`, not with `id`.
-
-<details>
-<summary>Fallback if the <code>i2c</code> group route does not work</summary>
-
-A narrow sudoers rule for just this one binary:
-
-```bash
-sudo tee /etc/sudoers.d/ddcutil <<'SUDOERS'
-<your-username> ALL=(root) NOPASSWD: /usr/bin/ddcutil
-SUDOERS
-sudo chmod 0440 /etc/sudoers.d/ddcutil
-```
-
-This lets your user run `ddcutil` as root with no password. `ddcutil` can write arbitrary
-monitor settings, so the grant is scoped to that binary only — do not widen it to
-`ALL=(root) NOPASSWD: ALL`.
-
-</details>
-
-### 5. Verify end to end
-
-```bash
-ddcutil detect
-ddcutil --display 1 capabilities | grep -A10 'Feature: 60'
-ddcutil --display 1 getvcp 60
-```
-
----
-
-## Known quirks
-
-### Vendor codes are under-reported
-
-`capabilities` lists only the input values the firmware chooses to admit. Real example, an HP
-monitor attached over USB-C:
+**Monitors lie about their inputs — in both directions.** Here is the reference HP panel's own
+capability report:
 
 ```
 Feature: 60 (Input Source)
@@ -136,110 +41,209 @@ Feature: 60 (Input Source)
       1f: Unrecognized value
 ```
 
-…while `getvcp 60` on that same monitor, on its USB-C input, returns `sl=0x13` — a value
-missing from the list. So the capability list is a hint, not the truth.
+The machine writing this is attached over USB-C, and `getvcp 60` returns `sl=0x13` — a value
+absent from that list. So the list **omits a real input**, and the `1f` it does offer is
+something the firmware itself cannot name. Build your input list from `capabilities` and you
+get a dead entry and a missing one.
 
-Note that `1f` in the list above is reported as "Unrecognized value" — so the list is not
-merely incomplete, it also contains entries that are not usable inputs. It misreports in both
-directions.
+**Switching away from yourself is a one-way door.** DDC/CI rides the display link. Tell the
+monitor to show DisplayPort and it stops showing your machine *and* takes the channel you
+would need to switch it back. Recovery is the physical buttons. Pick the wrong code — a
+plausible-looking one that this panel doesn't implement — and you get a black screen and a
+hunt for the bezel.
 
-**Reliable way to map codes:** read the value while cycling inputs by hand on the OSD:
-
-```bash
-watch -n1 'ddcutil --display 1 getvcp 60'
-```
-
-Common values (standard MCCS, plus vendor extensions in the wild):
-
-| Value  | Input                              |
-| ------ | ---------------------------------- |
-| `0x0f` | DisplayPort-1                      |
-| `0x10` | DisplayPort-2                      |
-| `0x11` | HDMI-1                             |
-| `0x12` | HDMI-2                             |
-| `0x13` | USB-C (HP vendor-specific)         |
-| `0x1b` | USB-C / Thunderbolt (some vendors) |
-| `0x1f` | vendor-specific / second USB-C     |
-
-MonitorSwitcher therefore does not trust `capabilities`, and does not make you calibrate
-before first use either. It builds the input list by merging the live `getvcp 60` value, the
-`capabilities` report, and the fallback table above — tracking, per input, whether the entry
-was **observed live**, **reported** by the firmware, or **guessed** from the table, and
-treating a guessed entry with more caution before switching to it. `monswitch learn` is an
-*optional* OSD walk-through that upgrades guesses to confirmed codes and records them per
-monitor (keyed per `docs/adr/0013-identity-host-input-and-target-resolution.md`). See
-`docs/adr/0001-zero-config-dynamic-discovery.md` and
-`docs/adr/0009-input-provenance-and-trust-tiers.md`.
-
-### Switching away from your own input is one-way
-
-If your machine is the USB-C source and you switch the monitor to DisplayPort, the monitor
-stops displaying your machine — and the DDC/CI channel dies with the link, so you cannot send
-the code to switch back. Recovery is the monitor's physical OSD buttons, or sending the code
-from whatever machine is on the input you switched to.
-
-The UI must therefore mark the currently-active input and confirm before switching away from
-it.
-
-### Other notes
-
-- `--display N` indices from `ddcutil detect` are not stable across reboots or replugs.
-  Address monitors by `--mfg`/`--model`/`--sn` or by `--bus`, resolved fresh at each run.
-- `ddcutil detect` is slow (it probes every I²C bus) — 1.5 s on the reference machine, against
-  0.35 s for a bus-direct `ddcutil --bus 16 getvcp 60` and 3.1 s for `capabilities`. Use an
-  explicit `--bus` on the write path. Note there is **no** `--nodetect` flag in `ddcutil` 1.4.1;
-  it fails with `Unknown option --nodetect`.
-- Better still, skip `ddcutil detect` on the read path entirely: the kernel already publishes
-  the mapping. `/sys/class/drm/card*/card*-*/ddc` symlinks each connected output to its I²C
-  adapter, and the adjacent `edid` file identifies the panel — the whole walk costs 0.02 s with
-  no I²C traffic. `ddcutil detect` is then only needed on drivers that do not expose `ddc`
-  (notably the NVIDIA proprietary driver). See `docs/adr/0010-sysfs-first-monitor-resolution.md`.
-- DDC/CI writes are fire-and-forget; the monitor may take a second or two to re-sync.
-- Laptop internal panels (`eDP-*`) have no DDC/CI input switching. Ignore them.
+So `monswitch` tracks **where every input came from** and refuses to pretend otherwise.
 
 ---
 
-## Reference machine
+## What makes it different
 
-Developed against:
+**It never offers an input your monitor didn't mention.** No built-in table of codes that
+"usually work". Every row is traceable to the live read, the monitor's own capability report,
+or something you told it. An early version padded the list from a cross-vendor table and
+cheerfully offered a second DisplayPort that didn't exist — exactly the row whose selection
+blanks your screen. [ADR-0014](docs/adr/0014-report-only-what-the-monitor-says.md) explains
+why that was removed rather than merely marked.
 
-- Ubuntu, kernel 7.0.0, Intel iGPU (`i915`)
-- Internal panel on `eDP-1`, HP monitor on `DP-1` (= the USB-C port, DP alt mode)
-- `ddcutil` 1.4.1, Python 3.12, Ulauncher 5.16.2 (extension API v2)
+**Every input carries its provenance, and confirmation is tiered on it:**
+
+| Tier | Means | Switching to it |
+| --- | --- | --- |
+| `confirmed` | You verified it | Confirm once, because it leaves this machine |
+| `live` | It is driving this panel right now | No confirmation; it's where you already are |
+| `reported` | The firmware listed it, unverified | Stronger warning first |
+| `guessed` | The firmware listed it and couldn't name it | Stronger warning first |
+
+An unverified destination always warns — even with `confirm_switch = false`, even with `-y`.
+That opt-out is for inputs you use daily, not an assertion that a guessed code is safe.
+
+**It fails closed.** If the current input can't be read, `monswitch` won't switch at all: with
+no idea where you are, it cannot tell whether a switch would cut your display link.
+
+**Zero config, and it stays that way.** No setup step, no file to write, nothing read unless
+you ask for it. Useful if you hot-desk and meet a different monitor every day.
+
+**Fast enough for a hotkey.** Monitors are resolved from `/sys/class/drm` — the kernel already
+publishes the connector-to-I²C mapping — in about 20ms, instead of the ~1.5s `ddcutil detect`
+spends probing every bus.
+
+---
+
+## Install
+
+Needs `ddcutil`, and GTK only if you want the popup.
+
+```bash
+sudo apt install ddcutil python3-gi gir1.2-gtk-3.0   # Debian/Ubuntu
+sudo dnf install ddcutil python3-gobject gtk3        # Fedora
+sudo pacman -S ddcutil python-gobject gtk3           # Arch
+```
+
+```bash
+git clone https://github.com/<you>/monswitch.git
+cd monswitch
+python3 -m venv --system-site-packages .venv   # --system-site-packages so GTK stays visible
+.venv/bin/pip install -e .
+.venv/bin/monswitch list
+```
+
+The core is standard-library-only Python 3.12+, so there is nothing else to install.
+
+<details>
+<summary><strong>Two things that catch everyone</strong></summary>
+
+**1. `i2c-dev` must be loaded**, or `/dev/i2c-*` won't exist:
+
+```bash
+sudo modprobe i2c-dev
+echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf
+```
+
+**2. You need non-root access to `/dev/i2c-*`.** Check before changing anything — on a modern
+systemd desktop you may already have it, via a `uaccess` ACL on your local seat:
+
+```bash
+ddcutil detect     # if this works without sudo, you are done
+```
+
+If not, join the `i2c` group (the `ddcutil` package ships the udev rule):
+
+```bash
+sudo usermod -aG i2c "$USER"   # then log out and back in
+```
+
+Note this is seat-bound: it applies to your graphical session, not over SSH.
+
+**Also:** some monitors ship with DDC/CI *disabled*. If `ddcutil detect` finds nothing, look
+for it in the monitor's own menu, usually under *Management*, *Settings* or *Other*.
+
+</details>
+
+---
+
+## Use
+
+```bash
+monswitch list                  # what's connected, which input is live
+monswitch set dp1               # switch, with confirmation
+monswitch set --dry-run dp1     # resolve and explain, change nothing
+monswitch                       # popup picker (bind it to a hotkey)
+```
+
+Inputs can be named however you think of them — `dp1`, `hdmi`, `usbc`, `0x13`, or a nickname
+you set. Ambiguity is never guessed: `dp` on a monitor with two DisplayPorts asks which one.
+
+With several monitors, name one — `monswitch set 'Dell U24' hdmi`, or `-m` in scripts. One
+positional is an input; two are a monitor then an input. The parser never inspects the values
+to decide which is which, so it cannot target the wrong panel.
+
+### The picker
+
+`monswitch` with no arguments opens a Spotlight-style popup: type to filter, arrows to move,
+Enter to pick, Escape to leave. The active input is marked, unverified ones are badged, and
+anything needing confirmation turns the row into the warning and waits for a second Enter.
+Escape backs out of that without closing the window.
+
+### Optional config
+
+Nothing is read unless you ask. `--config PATH`, or `--use-default-config` for
+`~/.config/monswitch/config.toml`:
+
+```toml
+confirm_switch = true
+
+[monitors."DEMOSERIAL"]
+name = "Desk Ultrawide"
+
+[monitors."DEMOSERIAL".inputs]
+"0x13" = "This Laptop"
+"0x0f" = "Desktop PC"
+```
+
+Naming an input under `[inputs]` marks it **confirmed** — you are asserting the code drives a
+real port — which clears the unverified warning for it. The key is whatever `monswitch list`
+prints as `key`.
+
+---
+
+## How it works
+
+Monitors implement VESA **MCCS** over **DDC/CI**, a channel on the I²C lines of the display
+cable — DP AUX for DisplayPort, and for USB-C in DP alt mode. Feature code **`0x60`** is Input
+Source: read it for the current input, write it to switch. `ddcutil` speaks the protocol;
+`monswitch` decides what is safe to ask it.
+
+Worth knowing if you're poking at this yourself:
+
+- `ddcutil` prints `Invalid value (sl=0x13)` for vendor-specific codes. That is not an error —
+  `0x13` is the real current input and `ddcutil` just has no name for it. Parse the `sl=` value.
+- `--display N` indices are not stable across reboots or replugs. Resolve by EDID or bus.
+- `--nodetect` does not exist (in 1.4.1 at least); an explicit `--bus` is what skips the probe.
+- Laptop internal panels (`eDP-*`) have no DDC/CI input switching at all.
+
+The full set of findings, and every design decision with its rejected alternatives, is in
+[`docs/adr/`](docs/adr/README.md).
+
+---
+
+## Alternatives
+
+Genuinely useful projects in the same space — if one fits you better, use it:
+
+| Project | Shape |
+| --- | --- |
+| [ddcutil](https://www.ddcutil.com/) | The actual DDC/CI implementation. Everything here, including `monswitch`, is a wrapper around it |
+| [nemofq/monitor-input-switch](https://github.com/nemofq/monitor-input-switch) | GNOME Shell extension, switches between fixed inputs |
+| [interrupt21h/ddc-input-switch](https://github.com/interrupt21h/ddc-input-switch) | Python/Tk GUI + CLI, toggles between two inputs |
+| [3urobeat/display-input-switcher](https://github.com/3urobeat/display-input-switcher) | Script, Linux and Windows |
+| [qddcswitch](https://codeberg.org/Okxa/qddcswitch) | Qt GUI, grid of screens and inputs |
+| [ruzaq/ddc_switch](https://github.com/ruzaq/ddc_switch) | Bash toggle with a zenity picker |
+| [pkielblock/monitor-switch](https://github.com/pkielblock/monitor-switch) | Self-hosted web UI |
+| [monitorcontrol](https://pypi.org/project/monitorcontrol/) | Python library for MCCS generally, not input-focused |
+
+Most are built for a known monitor and a known code, which is the right call for a fixed desk.
+`monswitch` is aimed at the case where you don't know the monitor yet, and where being wrong
+about an input code costs you your screen.
 
 ---
 
 ## Status
 
-**Current:** `monswitch list` works. Everything shipped so far is read-only — no code in this
-repo can change a monitor's input yet, by design. The design is recorded as 13 ADRs, indexed in
-[`docs/adr/README.md`](docs/adr/README.md), with the domain vocabulary in
-[`docs/CONTEXT.md`](docs/CONTEXT.md) and the agent brief in
-[`docs/AGENTS.md`](docs/AGENTS.md).
+`list`, `set` and the picker work. Read-only operations are safe to run freely.
 
-### Try it
+- [x] `monswitch list`
+- [x] `monswitch set` with tiered confirmation
+- [x] GTK popup picker
+- [ ] [Ulauncher](https://ulauncher.io/) extension
+- [ ] `monswitch learn` — confirm codes by walking the monitor's own menu
 
-```bash
-python3 -m venv --system-site-packages .venv   # --system-site-packages keeps system `gi` visible
-.venv/bin/pip install -e .
-.venv/bin/monswitch list
-```
+394 tests, none of which need a monitor: the parsers are pure functions over captured
+fixtures, and the write path is tested through a fake runner. No test has ever issued a
+`setvcp`.
 
-Or without installing anything: `PYTHONPATH=src python3 -m monswitch.cli list`.
-
-### Roadmap
-
-- [x] `monswitch list` — detect monitors, print inputs, mark the active one
-- [ ] `monswitch set <input>` / `set <monitor> <input>` / `-m <monitor> set <input>` — the
-      plumbing command. Arity decides: one positional is an input on the auto-targeted
-      monitor, two are monitor then input
-- [x] GTK popup picker (`monswitch` with no args)
-- [ ] Ulauncher extension wrapping the same core
-- [ ] `monswitch learn` — optional OSD walk-through that confirms guessed codes
-- [ ] Config at `~/.config/monswitch/config.toml` — overrides: friendly names, aliases,
-      confirmed code maps, `confirm_switch`
-
----
+Tested against an HP Z38c over USB-C on Intel `i915`, Ubuntu, `ddcutil` 1.4.1. **Reports from
+other hardware are the most useful thing you can contribute** — especially the output of
+`ddcutil capabilities` and `getvcp 60` from a panel whose input codes are unusual.
 
 ## License
 
