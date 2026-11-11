@@ -177,9 +177,7 @@ class NoOpTest(unittest.TestCase):
         runner = RecordingRunner()
         usbc = source(0x13, "USB-C")
 
-        outcome = switch_input(
-            monitor(usbc), usbc, ddcutil=writer(runner), strategy=Agreeing()
-        )
+        outcome = switch_input(monitor(usbc), usbc, ddcutil=writer(runner), strategy=Agreeing())
 
         self.assertFalse(outcome.changed)
         self.assertFalse(outcome.channel_lost)
@@ -198,9 +196,7 @@ class NoOpTest(unittest.TestCase):
         strategy = Agreeing()
         usbc = source(0x13, "USB-C")
 
-        switch_input(
-            monitor(usbc), usbc, ddcutil=writer(RecordingRunner()), strategy=strategy
-        )
+        switch_input(monitor(usbc), usbc, ddcutil=writer(RecordingRunner()), strategy=strategy)
 
         self.assertEqual(strategy.prompts, [])
 
@@ -264,9 +260,7 @@ class LeavingHostTest(unittest.TestCase):
             strategy=Agreeing(),
         )
 
-        self.assertEqual(
-            runner.calls[-1], ("ddcutil", "--bus", "16", "setvcp", "60", "0x0f")
-        )
+        self.assertEqual(runner.calls[-1], ("ddcutil", "--bus", "16", "setvcp", "60", "0x0f"))
 
     def test_yes_skips_the_prompt(self) -> None:
         strategy = Agreeing()
@@ -406,9 +400,7 @@ class UnverifiedDestinationTest(unittest.TestCase):
         subject = monitor(source(0x13, "USB-C"), reported)
         strategy = Agreeing()
 
-        switch_input(
-            subject, reported, ddcutil=writer(RecordingRunner()), strategy=strategy
-        )
+        switch_input(subject, reported, ddcutil=writer(RecordingRunner()), strategy=strategy)
 
         self.assertEqual(strategy.prompts[0][1], Confirmation.UNVERIFIED_DESTINATION)
 

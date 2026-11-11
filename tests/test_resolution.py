@@ -28,14 +28,14 @@ from monswitch.core.resolution import BUILTIN_SLUGS, resolve_input
 HP = EdidIdentity(manufacturer="HPN", product_code=13327, model="HP Z38c", serial="DEMOSERIAL")
 
 
-def source(code: int, name: str | None, provenance: Provenance = Provenance.REPORTED) -> InputSource:
+def source(
+    code: int, name: str | None, provenance: Provenance = Provenance.REPORTED
+) -> InputSource:
     return InputSource(code=code, name=name, provenance=provenance)
 
 
 def monitor(*inputs: InputSource, host_input: int | None = 0x13) -> Monitor:
-    return Monitor(
-        identity=HP, bus=16, connector="DP-1", inputs=inputs, host_input=host_input
-    )
+    return Monitor(identity=HP, bus=16, connector="DP-1", inputs=inputs, host_input=host_input)
 
 
 REFERENCE = monitor(
@@ -164,7 +164,7 @@ class EmptyQueryTest(unittest.TestCase):
 
     def test_only_raises_when_not_unique(self) -> None:
         with self.assertRaises(ValueError):
-            resolve_input(REFERENCE, "dp").only
+            _ = resolve_input(REFERENCE, "dp").only
 
 
 class StrictStrategyTest(unittest.TestCase):
@@ -236,36 +236,28 @@ class PromptingStrategyTest(unittest.TestCase):
         """A bare Enter must never switch a monitor."""
         strategy, _ = self.strategy("\n")
 
-        self.assertFalse(
-            strategy.confirm("switch away?", confirmation=Confirmation.LEAVING_HOST)
-        )
+        self.assertFalse(strategy.confirm("switch away?", confirmation=Confirmation.LEAVING_HOST))
 
     def test_y_confirms_an_ordinary_switch(self) -> None:
         for answer in ("y\n", "Y\n", "yes\n"):
             with self.subTest(answer=answer):
                 strategy, _ = self.strategy(answer)
 
-                self.assertTrue(
-                    strategy.confirm("switch?", confirmation=Confirmation.LEAVING_HOST)
-                )
+                self.assertTrue(strategy.confirm("switch?", confirmation=Confirmation.LEAVING_HOST))
 
     def test_unverified_destination_demands_the_full_word(self) -> None:
         """The gravest case gets the highest friction (ADR-0009)."""
         strategy, _ = self.strategy("y\n")
 
         self.assertFalse(
-            strategy.confirm(
-                "switch?", confirmation=Confirmation.UNVERIFIED_DESTINATION
-            )
+            strategy.confirm("switch?", confirmation=Confirmation.UNVERIFIED_DESTINATION)
         )
 
     def test_unverified_destination_accepts_yes(self) -> None:
         strategy, output = self.strategy("yes\n")
 
         self.assertTrue(
-            strategy.confirm(
-                "switch?", confirmation=Confirmation.UNVERIFIED_DESTINATION
-            )
+            strategy.confirm("switch?", confirmation=Confirmation.UNVERIFIED_DESTINATION)
         )
         self.assertIn("Type 'yes'", output.getvalue())
 

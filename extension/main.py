@@ -46,7 +46,7 @@ def _bootstrap_import_path() -> str | None:
             return None
 
     try:
-        import monswitch  # noqa: F401, PLC0415 - probing importability
+        import monswitch  # noqa: F401 - probing importability
     except ImportError:
         return (
             "monswitch could not be imported. Set the 'monswitch source path' preference "
@@ -57,17 +57,17 @@ def _bootstrap_import_path() -> str | None:
 
 BOOTSTRAP_ERROR = _bootstrap_import_path()
 
-from ulauncher.api.client.EventListener import EventListener  # noqa: E402
-from ulauncher.api.client.Extension import Extension  # noqa: E402
-from ulauncher.api.shared.action.ExtensionCustomAction import (  # noqa: E402
+from ulauncher.api.client.EventListener import EventListener
+from ulauncher.api.client.Extension import Extension
+from ulauncher.api.shared.action.ExtensionCustomAction import (
     ExtensionCustomAction,
 )
-from ulauncher.api.shared.action.HideWindowAction import HideWindowAction  # noqa: E402
-from ulauncher.api.shared.action.RenderResultListAction import (  # noqa: E402
+from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
+from ulauncher.api.shared.action.RenderResultListAction import (
     RenderResultListAction,
 )
-from ulauncher.api.shared.event import ItemEnterEvent, KeywordQueryEvent  # noqa: E402
-from ulauncher.api.shared.item.ExtensionResultItem import (  # noqa: E402
+from ulauncher.api.shared.event import ItemEnterEvent, KeywordQueryEvent
+from ulauncher.api.shared.item.ExtensionResultItem import (
     ExtensionResultItem,
 )
 
@@ -123,7 +123,7 @@ class MonswitchExtension(Extension):
             self._snapshot = DiscoverySnapshot(discover=run)
         return self._snapshot  # type: ignore[return-value]
 
-    def model(self, query: str):  # noqa: ANN201 - PickerModel, imported conditionally
+    def model(self, query: str):
         """A model for this query, rebuilt when the snapshot refreshes.
 
         Kept between queries so an armed row survives the keystroke that follows it; rebuilt
@@ -132,9 +132,7 @@ class MonswitchExtension(Extension):
         snapshot = self.snapshot()
         stale_before = snapshot.is_stale
         if self._model is None or stale_before:
-            self._model = snapshot.model(
-                confirm_switch=self.config().confirm_switch
-            )
+            self._model = snapshot.model(confirm_switch=self.config().confirm_switch)
         self._model.set_query(query)  # type: ignore[union-attr]
         return self._model
 
@@ -177,7 +175,7 @@ def _error_item(message: str) -> RenderResultListAction:
 
 
 class QueryListener(EventListener):
-    def on_event(self, event, extension):  # noqa: ANN001, ANN201 - Ulauncher's signature
+    def on_event(self, event, extension):
         if BOOTSTRAP_ERROR is not None:
             return _error_item(BOOTSTRAP_ERROR)
 
@@ -196,14 +194,14 @@ class QueryListener(EventListener):
             )
         except DdcutilError as exc:
             return _error_item(str(exc))
-        except Exception as exc:  # noqa: BLE001 - must not take the daemon down
+        except Exception as exc:
             return _error_item(f"{type(exc).__name__}: {exc}")
 
         return _render(items)
 
 
 class EnterListener(EventListener):
-    def on_event(self, event, extension):  # noqa: ANN001, ANN201 - Ulauncher's signature
+    def on_event(self, event, extension):
         if BOOTSTRAP_ERROR is not None:
             return _error_item(BOOTSTRAP_ERROR)
 
@@ -253,10 +251,10 @@ class _AlreadyConfirmed:
     bypassed.
     """
 
-    def choose(self, query, choices):  # noqa: ANN001, ANN201
+    def choose(self, query, choices):
         raise AssertionError("the launcher resolves choices itself")
 
-    def confirm(self, prompt, *, confirmation):  # noqa: ANN001, ANN201
+    def confirm(self, prompt, *, confirmation):
         raise AssertionError("the launcher confirms via its own two-step Enter")
 
 

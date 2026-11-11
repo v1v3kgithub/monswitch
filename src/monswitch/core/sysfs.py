@@ -163,11 +163,7 @@ def resolve(root: Path = DEFAULT_DRM_ROOT) -> Resolution:
 
         if bus is None:
             link = connector_dir / "ddc"
-            reason = (
-                SkipReason.UNREADABLE_DDC_LINK
-                if link.is_symlink()
-                else SkipReason.NO_DDC_LINK
-            )
+            reason = SkipReason.UNREADABLE_DDC_LINK if link.is_symlink() else SkipReason.NO_DDC_LINK
             skipped.append((name, reason))
             continue
 
@@ -187,13 +183,9 @@ def resolve(root: Path = DEFAULT_DRM_ROOT) -> Resolution:
             skipped.append((name, SkipReason.BAD_EDID))
             continue
 
-        monitors.append(
-            DetectedMonitor(identity=identity, bus=bus, connector=connector, card=card)
-        )
+        monitors.append(DetectedMonitor(identity=identity, bus=bus, connector=connector, card=card))
 
-    return Resolution(
-        monitors=tuple(monitors), skipped=tuple(skipped), ddc_links_seen=links_seen
-    )
+    return Resolution(monitors=tuple(monitors), skipped=tuple(skipped), ddc_links_seen=links_seen)
 
 
 def _connector_dirs(root: Path) -> list[Path]:

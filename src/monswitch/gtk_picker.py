@@ -83,16 +83,15 @@ def run_picker(
     """
     if not GTK_AVAILABLE:  # pragma: no cover - environment dependent
         return PickerResult(
-            error=(
-                "GTK is not available: "
-                f"{_IMPORT_ERROR}. Install python3-gi and gir1.2-gtk-3.0"
-            )
+            error=(f"GTK is not available: {_IMPORT_ERROR}. Install python3-gi and gir1.2-gtk-3.0")
         )
 
     # Versions were pinned at module import; Gtk first so its own Gdk requirement is
     # already satisfied by the pin rather than by whatever loads first.
-    from gi.repository import Gtk  # noqa: PLC0415 - lazy by design
-    from gi.repository import Gdk  # noqa: PLC0415 - lazy by design
+    from gi.repository import (
+        Gdk,
+        Gtk,
+    )
 
     model = PickerModel(monitors, confirm_switch=config.confirm_switch)
     writer = ddcutil or WriteCapableDdcutil()
@@ -155,9 +154,7 @@ def run_picker(
     scroller.add(listbox)
     layout.pack_start(scroller, True, True, 0)
 
-    footer = Gtk.Label(
-        label="↑↓ move · Enter select · Esc close", xalign=0.5
-    )
+    footer = Gtk.Label(label="↑↓ move · Enter select · Esc close", xalign=0.5)
     footer.get_style_context().add_class("monswitch-footer")
     layout.pack_end(footer, False, False, 0)
 
@@ -202,9 +199,7 @@ def run_picker(
             if note:
                 note_label = Gtk.Label(label=note, xalign=1.0)
                 style = note_label.get_style_context()
-                style.add_class(
-                    "monswitch-note-current" if row.is_active else "monswitch-note"
-                )
+                style.add_class("monswitch-note-current" if row.is_active else "monswitch-note")
                 line.pack_end(note_label, False, False, 0)
 
         container = Gtk.ListBoxRow()

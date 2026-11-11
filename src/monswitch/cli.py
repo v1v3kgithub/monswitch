@@ -242,9 +242,7 @@ def main(
         return _run_list(args, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
 
     if args.command == "set":
-        return _run_set(
-            args, parser, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr
-        )
+        return _run_set(args, parser, ddcutil=ddcutil, drm_root=drm_root, out=stdout, err=stderr)
 
     parser.print_usage(file=stderr)
     return EXIT_USAGE
@@ -372,9 +370,7 @@ def _print_notes(
     err: TextIO,
     verbose: bool,
 ) -> None:
-    unverified = any(
-        not source.is_verified for keyed in shown for source in keyed.monitor.inputs
-    )
+    unverified = any(not source.is_verified for keyed in shown for source in keyed.monitor.inputs)
     if unverified:
         print(
             "\nInputs marked unverified were inferred, not observed. Switching to one may "
@@ -398,9 +394,7 @@ def _print_notes(
             print(f"{PROGRAM}: skipped {name}: {reason}", file=err)
 
 
-def _report_nothing_found(
-    result: Discovery, *, out: TextIO, err: TextIO, verbose: bool
-) -> None:
+def _report_nothing_found(result: Discovery, *, out: TextIO, err: TextIO, verbose: bool) -> None:
     """Explain an empty result. Never just print nothing (ADR-0011)."""
     print(f"{PROGRAM}: no external monitor with DDC/CI was found.", file=err)
     print("Things worth checking:", file=err)
@@ -463,8 +457,7 @@ def _run_set(
     if split is None:
         if args.monitor is not None and len(args.target) > 1:
             print(
-                f"{PROGRAM}: give the monitor either with -m or as the first argument, "
-                "not both",
+                f"{PROGRAM}: give the monitor either with -m or as the first argument, not both",
                 file=err,
             )
         else:
@@ -544,9 +537,7 @@ def _run_set(
     else:
         destination = match.only
 
-    verdict = switch_confirmation(
-        monitor, destination, confirm_switch=config.confirm_switch
-    )
+    verdict = switch_confirmation(monitor, destination, confirm_switch=config.confirm_switch)
 
     print(
         f"{monitor.display_name}: {destination.hex_code} {destination.label} "
@@ -645,8 +636,7 @@ def _load_config(args: argparse.Namespace, err: TextIO) -> Config:
         default = config_path()
         if default.exists():
             print(
-                f"{PROGRAM}: note: {default} exists but was not read; "
-                "pass --config to apply it",
+                f"{PROGRAM}: note: {default} exists but was not read; pass --config to apply it",
                 file=err,
             )
         return Config(path=None, exists=False)
@@ -707,9 +697,7 @@ def _run_picker(
     # Warnings are carried into the window, since there is no terminal in the user's attention
     # once a popup is open.
     opening_message = (
-        "; ".join(f"{w.monitor}: {w.message}" for w in result.warnings)
-        if result.warnings
-        else None
+        "; ".join(f"{w.monitor}: {w.message}" for w in result.warnings) if result.warnings else None
     )
 
     writer = (
@@ -721,9 +709,7 @@ def _run_picker(
         )
     )
 
-    outcome = run_picker(
-        monitors, config=config, ddcutil=writer, message=opening_message
-    )
+    outcome = run_picker(monitors, config=config, ddcutil=writer, message=opening_message)
 
     if outcome.error:
         print(f"{PROGRAM}: {outcome.error}", file=err)

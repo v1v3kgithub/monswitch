@@ -43,9 +43,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
 
-from .ddc import Ddcutil, DdcutilError, DdcutilParseError, DetectedDisplay
+from .ddc import Ddcutil, DdcutilError, DdcutilParseError
 from .edid import EdidIdentity
 from .models import (
     InputSource,
@@ -63,8 +62,6 @@ __all__ = [
     "MonitorWarning",
     "discover",
 ]
-
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +140,7 @@ def discover(
     colliding = {key for key in keys if keys.count(key) > 1}
 
     monitors: list[Monitor] = []
-    for (identity, bus, connector), key in zip(candidates, keys):
+    for (identity, bus, connector), key in zip(candidates, keys, strict=True):
         label = identity.model or f"{identity.manufacturer} on {connector}"
         host_input = _read_host_input(runner, bus, label, warnings)
         reported, firmware_unnamed = _read_capabilities(
@@ -320,9 +317,7 @@ def _assemble_inputs(
         found.append(InputSource(code=code, name=name, provenance=Provenance.REPORTED))
 
     if host_input is not None:
-        found.append(
-            InputSource(code=host_input, name=None, provenance=Provenance.LIVE)
-        )
+        found.append(InputSource(code=host_input, name=None, provenance=Provenance.LIVE))
 
     for code, name in confirmed.items():
         found.append(InputSource(code=code, name=name, provenance=Provenance.CONFIRMED))

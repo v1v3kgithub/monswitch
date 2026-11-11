@@ -45,7 +45,7 @@ def build_edid(
     base[0:8] = _MAGIC
 
     packed = 0
-    for shift, letter in zip((10, 5, 0), manufacturer):
+    for shift, letter in zip((10, 5, 0), manufacturer, strict=True):
         packed |= (ord(letter) - ord("A") + 1) << shift
     base[8:10] = packed.to_bytes(2, "big")
 
@@ -124,15 +124,11 @@ class SerialTest(unittest.TestCase):
 
     def test_whitespace_only_descriptor_is_absent(self) -> None:
         """An empty descriptor must fall through, not yield an empty-string serial."""
-        edid = build_edid(
-            serial_number=b"\x00\x00\x00\x00", descriptors=[(0xFF, b"   ")]
-        )
+        edid = build_edid(serial_number=b"\x00\x00\x00\x00", descriptors=[(0xFF, b"   ")])
         self.assertIsNone(parse(edid).serial)
 
     def test_whitespace_only_descriptor_falls_back_to_numeric_field(self) -> None:
-        edid = build_edid(
-            serial_number=(42).to_bytes(4, "little"), descriptors=[(0xFF, b"  ")]
-        )
+        edid = build_edid(serial_number=(42).to_bytes(4, "little"), descriptors=[(0xFF, b"  ")])
         self.assertEqual(parse(edid).serial, "42")
 
 

@@ -219,9 +219,7 @@ class PickerModel:
         terms = query.lower().split()
         if terms:
             self._rows = tuple(
-                row
-                for row in self._all_rows
-                if all(term in row.search_text for term in terms)
+                row for row in self._all_rows if all(term in row.search_text for term in terms)
             )
         else:
             self._rows = tuple(self._all_rows)

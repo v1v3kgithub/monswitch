@@ -111,11 +111,7 @@ class Strict:
     def confirm(self, prompt: str, *, confirmation: Confirmation) -> bool:
         # Name the flag that would actually work. --yes does not cover an unverified
         # destination (ADR-0009), so suggesting it there would send the user in a circle.
-        flag = (
-            "--force"
-            if confirmation is Confirmation.UNVERIFIED_DESTINATION
-            else "--yes"
-        )
+        flag = "--force" if confirmation is Confirmation.UNVERIFIED_DESTINATION else "--yes"
         raise Declined(
             f"{prompt}\n(refusing: this needs confirmation and there is no terminal to "
             f"ask on. Pass {flag} to proceed without being asked.)"

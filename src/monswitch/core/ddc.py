@@ -33,6 +33,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 __all__ = [
+    "INPUT_SOURCE_FEATURE",
     "BusNotFound",
     "CapabilityInput",
     "CommandResult",
@@ -44,7 +45,6 @@ __all__ = [
     "DdcutilTimeout",
     "DetectedDisplay",
     "I2cPermissionDenied",
-    "INPUT_SOURCE_FEATURE",
     "NoMonitorOnBus",
     "Runner",
     "SetvcpFailed",
@@ -74,7 +74,9 @@ _FEATURE_HEADER = re.compile(r"^\s*Feature:\s*([0-9a-fA-F]{2})\b")
 _VALUE_LINE = re.compile(r"^\s*([0-9a-fA-F]{2}):\s*(.*?)\s*$")
 
 # "      Values: 00 01 02 03 (interpretation unavailable)"
-_INLINE_VALUES = re.compile(r"^\s*Values:\s*(?P<values>(?:[0-9a-fA-F]{2}\s+)*[0-9a-fA-F]{2})\s*(?P<note>\(.*\))?\s*$")
+_INLINE_VALUES = re.compile(
+    r"^\s*Values:\s*(?P<values>(?:[0-9a-fA-F]{2}\s+)*[0-9a-fA-F]{2})\s*(?P<note>\(.*\))?\s*$"
+)
 
 _VALUES_HEADER = re.compile(r"^\s*Values:\s*$")
 
@@ -159,9 +161,7 @@ def parse_getvcp_input(text: str) -> int:
         if int(terse.group("code"), 16) == INPUT_SOURCE_FEATURE:
             return int(terse.group("value"), 16)
 
-    raise DdcutilParseError(
-        f"no input source value found in getvcp output: {text.strip()!r}"
-    )
+    raise DdcutilParseError(f"no input source value found in getvcp output: {text.strip()!r}")
 
 
 def parse_capabilities_inputs(text: str) -> tuple[CapabilityInput, ...]:
@@ -250,9 +250,7 @@ def parse_detect(text: str) -> tuple[DetectedDisplay, ...]:
             flush()
             current = {
                 "usable": header.group("invalid") is None,
-                "display_number": int(header.group("number"))
-                if header.group("number")
-                else None,
+                "display_number": int(header.group("number")) if header.group("number") else None,
             }
             continue
 
@@ -403,7 +401,7 @@ Runner = Callable[[Sequence[str], float], CommandResult]
 def _subprocess_runner(argv: Sequence[str], timeout: float) -> CommandResult:
     """Default runner: a plain, non-shell subprocess call."""
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed argv, never shell=True
+        completed = subprocess.run(
             list(argv),
             capture_output=True,
             text=True,
@@ -415,9 +413,7 @@ def _subprocess_runner(argv: Sequence[str], timeout: float) -> CommandResult:
             f"{argv[0]!r} not found on PATH; install ddcutil (see README)"
         ) from exc
     except subprocess.TimeoutExpired as exc:
-        raise DdcutilTimeout(
-            f"{' '.join(argv)} did not finish within {timeout:g}s"
-        ) from exc
+        raise DdcutilTimeout(f"{' '.join(argv)} did not finish within {timeout:g}s") from exc
 
     return CommandResult(
         argv=tuple(argv),
@@ -503,9 +499,7 @@ class Ddcutil:
                 "DDC/CI is enabled in its on-screen menu"
             )
 
-        raise DdcutilFailed(
-            f"{' '.join(result.argv)} exited {result.returncode}: {output.strip()}"
-        )
+        raise DdcutilFailed(f"{' '.join(result.argv)} exited {result.returncode}: {output.strip()}")
 
 
 # ---------------------------------------------------------------------------

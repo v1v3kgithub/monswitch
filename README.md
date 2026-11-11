@@ -1,5 +1,9 @@
 # monswitch
 
+[![CI](https://github.com/<you>/monswitch/actions/workflows/ci.yml/badge.svg)](https://github.com/<you>/monswitch/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Switch your monitor's input from the keyboard, on Linux — without guessing which inputs exist.**
 
 One monitor, two machines. Your laptop is on USB-C, the desktop is on DisplayPort, and the

@@ -254,7 +254,7 @@ class DiscoverySnapshot:
             try:
                 self._result = self.discover()
                 self._fetched_at = self.clock()
-            except Exception:  # noqa: BLE001 - a launcher must not die on a probe failure
+            except Exception:
                 if self._result is None:
                     raise
         assert self._result is not None

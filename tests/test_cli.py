@@ -15,8 +15,10 @@ import io
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
 from unittest import mock
+
+from test_discovery import REFERENCE_CAPS, FakeDdcutil
+from test_sysfs import HP_EDID, LGD_EDID, make_connector
 
 from monswitch.cli import EXIT_ERROR, EXIT_OK, main
 from monswitch.core.ddc import (
@@ -26,9 +28,6 @@ from monswitch.core.ddc import (
     WriteCapableDdcutil,
 )
 from monswitch.gtk_picker import PickerResult
-
-from test_discovery import REFERENCE_CAPS, FakeDdcutil
-from test_sysfs import HP_EDID, LGD_EDID, make_connector
 
 
 class CliTestCase(unittest.TestCase):
@@ -155,14 +154,10 @@ class ConfigOptInTest(CliTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.one_hp()
-        self.config.write_text(
-            '[monitors."DEMOSERIAL"]\nname = "Should not be applied"\n'
-        )
+        self.config.write_text('[monitors."DEMOSERIAL"]\nname = "Should not be applied"\n')
 
     def test_no_config_flag_reads_nothing(self) -> None:
-        _, out, _ = self.run_cli(
-            "list", ddcutil=self.reference_ddcutil(), with_config=False
-        )
+        _, out, _ = self.run_cli("list", ddcutil=self.reference_ddcutil(), with_config=False)
 
         self.assertIn("HP Z38c", out)
         self.assertNotIn("Should not be applied", out)
@@ -174,7 +169,9 @@ class ConfigOptInTest(CliTestCase):
 
     def test_missing_config_file_is_reported_not_ignored(self) -> None:
         code, _, err = self.run_cli(
-            "--config", str(self.dir / "absent.toml"), "list",
+            "--config",
+            str(self.dir / "absent.toml"),
+            "list",
             ddcutil=self.reference_ddcutil(),
             with_config=False,
         )
@@ -186,11 +183,7 @@ class ConfigOptInTest(CliTestCase):
         """A separate flag, so neither it nor --config can swallow the subcommand."""
         from monswitch.cli import build_parser
 
-        options = {
-            option
-            for action in build_parser()._actions  # noqa: SLF001 - our own parser
-            for option in action.option_strings
-        }
+        options = {option for action in build_parser()._actions for option in action.option_strings}
 
         self.assertIn("--use-default-config", options)
 
@@ -219,7 +212,7 @@ class SwallowedSubcommandTest(CliTestCase):
 
     def test_monitor_flag_swallowing_set_is_a_usage_error(self) -> None:
         with mock.patch("monswitch.gtk_picker.run_picker") as picker:
-            code, _, err = self.run_cli(
+            code, _, _ = self.run_cli(
                 "-m", "set", ddcutil=self.reference_ddcutil(), with_config=False
             )
 
@@ -238,9 +231,7 @@ class SwallowedSubcommandTest(CliTestCase):
         with mock.patch(
             "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
         ) as picker:
-            code, _, _ = self.run_cli(
-                ddcutil=self.reference_ddcutil(), with_config=False
-            )
+            code, _, _ = self.run_cli(ddcutil=self.reference_ddcutil(), with_config=False)
 
         picker.assert_called_once()
         self.assertEqual(code, EXIT_OK)
@@ -297,18 +288,14 @@ class FlagPositionTest(CliTestCase):
     def test_mixed_with_a_subcommand_only_flag(self) -> None:
         ddcutil = self.reference_ddcutil()
 
-        code, _, err = self.run_cli(
-            "list", "--no-capabilities", "-v", ddcutil=ddcutil
-        )
+        code, _, err = self.run_cli("list", "--no-capabilities", "-v", ddcutil=ddcutil)
 
         self.assertEqual(code, EXIT_OK)
         self.assertEqual(ddcutil.capability_calls, [])
         self.assertIn("internal panel", err)
 
     def test_set_accepts_dry_run_either_side_of_its_target(self) -> None:
-        code, out, _ = self.run_cli(
-            "set", "--dry-run", "usbc", ddcutil=self.reference_ddcutil()
-        )
+        code, out, _ = self.run_cli("set", "--dry-run", "usbc", ddcutil=self.reference_ddcutil())
 
         self.assertEqual(code, EXIT_OK)
         self.assertIn("0x13", out)
@@ -507,9 +494,7 @@ class NoArgumentsTest(CliTestCase):
         with mock.patch(
             "monswitch.gtk_picker.run_picker", return_value=PickerResult(cancelled=True)
         ) as picker:
-            self.run_cli(
-                ddcutil=FakeDdcutil(live_errors={16: NoMonitorOnBus("no answer")})
-            )
+            self.run_cli(ddcutil=FakeDdcutil(live_errors={16: NoMonitorOnBus("no answer")}))
 
         self.assertIsNotNone(picker.call_args.kwargs["message"])
 
@@ -572,17 +557,13 @@ class WriteSurfaceTest(CliTestCase):
 
     def test_yes_does_not_cover_an_unverified_destination(self) -> None:
         """ADR-0009: the opt-out covers daily-use inputs, not guessed codes."""
-        code, _, err = self.run_cli(
-            "set", "-y", "dp1", ddcutil=self.reference_ddcutil()
-        )
+        code, _, err = self.run_cli("set", "-y", "dp1", ddcutil=self.reference_ddcutil())
 
         self.assertEqual(code, EXIT_ERROR)
         self.assertIn("--force", err)
 
     def test_dry_run_says_it_changed_nothing(self) -> None:
-        code, out, _ = self.run_cli(
-            "set", "--dry-run", "dp1", ddcutil=self.reference_ddcutil()
-        )
+        code, out, _ = self.run_cli("set", "--dry-run", "dp1", ddcutil=self.reference_ddcutil())
 
         self.assertEqual(code, EXIT_OK)
         self.assertIn("nothing was changed", out)

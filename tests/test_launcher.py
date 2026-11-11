@@ -170,9 +170,7 @@ class ActionRoundTripTest(unittest.TestCase):
         """This crosses a process boundary; the safe failure is to do nothing."""
         for data in (None, "nonsense", {}, {"kind": "explode"}, {"kind": None}, 42):
             with self.subTest(data=data):
-                self.assertEqual(
-                    ItemAction.from_data(data).kind, ActionKind.NOTHING
-                )
+                self.assertEqual(ItemAction.from_data(data).kind, ActionKind.NOTHING)
 
     def test_non_integer_bus_and_code_are_dropped(self) -> None:
         action = ItemAction.from_data({"kind": "switch", "bus": "16", "code": "0x0f"})
@@ -185,9 +183,7 @@ class ResolveActionTest(unittest.TestCase):
     def test_resolves_by_bus_and_code(self) -> None:
         subject = model()
 
-        kind, row = resolve_action(
-            subject, ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F)
-        )
+        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F))
 
         self.assertEqual(kind, ActivationKind.ARM)
         self.assertIsNotNone(row)
@@ -198,9 +194,7 @@ class ResolveActionTest(unittest.TestCase):
         subject = model()
         subject.set_query("desktop")
 
-        kind, row = resolve_action(
-            subject, ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F)
-        )
+        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F))
 
         self.assertEqual(row.source.code, 0x0F)
         self.assertEqual(kind, ActivationKind.ARM)
@@ -218,9 +212,7 @@ class ResolveActionTest(unittest.TestCase):
         """A monitor unplugged between render and Enter must not switch a near match."""
         subject = model()
 
-        kind, row = resolve_action(
-            subject, ItemAction(kind=ActionKind.SWITCH, bus=99, code=0x0F)
-        )
+        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.SWITCH, bus=99, code=0x0F))
 
         self.assertEqual(kind, ActivationKind.NOTHING)
         self.assertIsNone(row)
@@ -228,9 +220,7 @@ class ResolveActionTest(unittest.TestCase):
     def test_wrong_code_on_the_right_bus_does_nothing(self) -> None:
         subject = model()
 
-        kind, _row = resolve_action(
-            subject, ItemAction(kind=ActionKind.SWITCH, bus=16, code=0xAA)
-        )
+        kind, _row = resolve_action(subject, ItemAction(kind=ActionKind.SWITCH, bus=16, code=0xAA))
 
         self.assertEqual(kind, ActivationKind.NOTHING)
 
@@ -317,9 +307,7 @@ class SnapshotTest(unittest.TestCase):
 
     def test_failed_refresh_keeps_the_previous_result(self) -> None:
         """A probe failure must not empty the list; stale-but-labelled beats nothing."""
-        failing = DiscoverySnapshot(
-            discover=self.discovery, ttl=10.0, clock=self.clock
-        )
+        failing = DiscoverySnapshot(discover=self.discovery, ttl=10.0, clock=self.clock)
         failing.get()
         self.clock.advance(11)
 
@@ -333,6 +321,7 @@ class SnapshotTest(unittest.TestCase):
 
     def test_first_failure_propagates(self) -> None:
         """With nothing cached there is nothing to serve, so the caller must hear about it."""
+
         def boom() -> Discovery:
             raise RuntimeError("ddcutil exploded")
 
@@ -425,9 +414,7 @@ class ExtensionShapeTest(unittest.TestCase):
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
         ]
         called = {
-            node.value.func.id
-            for node in toplevel_calls
-            if isinstance(node.value.func, ast.Name)
+            node.value.func.id for node in toplevel_calls if isinstance(node.value.func, ast.Name)
         }
 
         self.assertNotIn("discover", called)

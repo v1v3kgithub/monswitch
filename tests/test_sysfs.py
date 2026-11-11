@@ -280,9 +280,7 @@ class FallbackSignalTest(TempDrmTree):
         self.assertTrue(resolve(self.root).ddc_links_present)
 
 
-@unittest.skipUnless(
-    DEFAULT_DRM_ROOT.is_dir(), f"{DEFAULT_DRM_ROOT} not present on this machine"
-)
+@unittest.skipUnless(DEFAULT_DRM_ROOT.is_dir(), f"{DEFAULT_DRM_ROOT} not present on this machine")
 class RealSysfsSmokeTest(unittest.TestCase):
     """Sanity check against the live tree. Read-only; asserts shape, not specific hardware."""
 

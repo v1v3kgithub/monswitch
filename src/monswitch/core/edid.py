@@ -85,9 +85,7 @@ def parse(data: bytes) -> EdidIdentity:
             base-block checksum.
     """
     if len(data) < _BASE_BLOCK_LEN:
-        raise EdidError(
-            f"EDID too short: {len(data)} bytes, need at least {_BASE_BLOCK_LEN}"
-        )
+        raise EdidError(f"EDID too short: {len(data)} bytes, need at least {_BASE_BLOCK_LEN}")
 
     base = data[:_BASE_BLOCK_LEN]
 

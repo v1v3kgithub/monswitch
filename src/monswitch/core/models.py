@@ -216,7 +216,7 @@ def assign_keys(monitors: Iterable[Monitor]) -> tuple[KeyedMonitor, ...]:
 
     return tuple(
         KeyedMonitor(monitor=monitor, key=key, overrides_allowed=key not in duplicated)
-        for monitor, key in zip(ordered, keys)
+        for monitor, key in zip(ordered, keys, strict=True)
     )
 
 

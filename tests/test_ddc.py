@@ -122,14 +122,14 @@ class CapabilitiesTest(unittest.TestCase):
             "         02: Max image\n"
         )
         self.assertEqual(
-            parse_capabilities_inputs(text), (CapabilityInput(code=0x0F, name="DisplayPort-1"),)
+            parse_capabilities_inputs(text),
+            (CapabilityInput(code=0x0F, name="DisplayPort-1"),),
         )
 
     def test_inline_hex_value_list(self) -> None:
         """Some firmware yields a bare list with no names at all."""
         text = (
-            "   Feature: 60 (Input Source)\n"
-            "      Values: 0f 11 13 (interpretation unavailable)\n"
+            "   Feature: 60 (Input Source)\n      Values: 0f 11 13 (interpretation unavailable)\n"
         )
         self.assertEqual(
             parse_capabilities_inputs(text),
@@ -218,7 +218,13 @@ class DetectVerboseTest(unittest.TestCase):
 
         self.assertEqual(
             (terse.bus, terse.connector, terse.manufacturer, terse.model, terse.serial),
-            (verbose.bus, verbose.connector, verbose.manufacturer, verbose.model, verbose.serial),
+            (
+                verbose.bus,
+                verbose.connector,
+                verbose.manufacturer,
+                verbose.model,
+                verbose.serial,
+            ),
         )
 
     def test_placeholder_binary_serial_is_not_mistaken_for_the_serial(self) -> None:

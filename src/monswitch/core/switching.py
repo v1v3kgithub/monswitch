@@ -99,9 +99,7 @@ def switch_input(
         SwitchRefused: if the Host Input is unknown, or the user said no.
         ~monswitch.core.ddc.SetvcpFailed: if the write itself failed.
     """
-    verdict = switch_confirmation(
-        monitor, destination, confirm_switch=confirm_switch
-    )
+    verdict = switch_confirmation(monitor, destination, confirm_switch=confirm_switch)
 
     if verdict is Confirmation.BLOCKED:
         raise SwitchRefused(
@@ -111,16 +109,15 @@ def switch_input(
             confirmation=verdict,
         )
 
-    if verdict is Confirmation.NONE:
-        # Already on that input. Writing anyway would be harmless but pointless, and
-        # reporting "switched" would be a lie.
-        if destination.code == monitor.host_input:
-            return SwitchOutcome(
-                monitor=monitor,
-                destination=destination,
-                confirmation=verdict,
-                changed=False,
-            )
+    # Already on that input. Writing anyway would be harmless but pointless, and reporting
+    # "switched" would be a lie.
+    if verdict is Confirmation.NONE and destination.code == monitor.host_input:
+        return SwitchOutcome(
+            monitor=monitor,
+            destination=destination,
+            confirmation=verdict,
+            changed=False,
+        )
 
     if verdict.requires_prompt and not _already_agreed(verdict, assume_yes, force):
         try:
@@ -161,9 +158,7 @@ def _already_agreed(verdict: Confirmation, assume_yes: bool, force: bool) -> boo
     return assume_yes
 
 
-def _prompt_for(
-    monitor: Monitor, destination: InputSource, verdict: Confirmation
-) -> str:
+def _prompt_for(monitor: Monitor, destination: InputSource, verdict: Confirmation) -> str:
     """The question put to the user, naming the specific risk."""
     current = monitor.host_input_source
     current_label = current.label if current else f"0x{monitor.host_input:02x}"

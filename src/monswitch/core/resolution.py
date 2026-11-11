@@ -115,9 +115,7 @@ def resolve_input(monitor: Monitor, query: str) -> InputQueryResult:
     ):
         matches = finder(monitor.inputs, needle, query)
         if matches:
-            return InputQueryResult(
-                query=query, matches=tuple(matches), matched_by=name
-            )
+            return InputQueryResult(query=query, matches=tuple(matches), matched_by=name)
 
     return InputQueryResult(query=query)
 
@@ -131,14 +129,8 @@ def _normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.strip().lower())
 
 
-def _by_nickname(
-    inputs: Sequence[InputSource], needle: str, _raw: str
-) -> list[InputSource]:
-    return [
-        source
-        for source in inputs
-        if source.name and _normalise(source.name) == needle
-    ]
+def _by_nickname(inputs: Sequence[InputSource], needle: str, _raw: str) -> list[InputSource]:
+    return [source for source in inputs if source.name and _normalise(source.name) == needle]
 
 
 def _by_slug(inputs: Sequence[InputSource], needle: str, _raw: str) -> list[InputSource]:
@@ -157,9 +149,7 @@ def _by_code(inputs: Sequence[InputSource], needle: str, raw: str) -> list[Input
 
 def _by_prefix(inputs: Sequence[InputSource], needle: str, _raw: str) -> list[InputSource]:
     return [
-        source
-        for source in inputs
-        if source.name and _normalise(source.name).startswith(needle)
+        source for source in inputs if source.name and _normalise(source.name).startswith(needle)
     ]
 
 

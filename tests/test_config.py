@@ -114,9 +114,7 @@ class CodeParsingTest(ConfigTestCase):
         config = load(self.write('[monitors.X.inputs]\n"0x13" = "a"\n'))
         bare = load(self.write('[monitors.Y.inputs]\n"13" = "a"\n', name="b.toml"))
 
-        self.assertEqual(
-            dict(config.for_monitor("X").inputs), dict(bare.for_monitor("Y").inputs)
-        )
+        self.assertEqual(dict(config.for_monitor("X").inputs), dict(bare.for_monitor("Y").inputs))
 
     def test_case_insensitive(self) -> None:
         config = load(self.write('[monitors.X.inputs]\n"0X1B" = "a"\n'))
@@ -203,10 +201,7 @@ class TolerantLoadTest(ConfigTestCase):
 
     def test_one_bad_monitor_does_not_discard_another(self) -> None:
         config, warnings = load_tolerant(
-            self.write(
-                '[monitors.GOOD]\nname = "Fine"\n'
-                "[monitors.BAD]\nname = 42\n"
-            )
+            self.write('[monitors.GOOD]\nname = "Fine"\n[monitors.BAD]\nname = 42\n')
         )
 
         self.assertEqual(config.for_monitor("GOOD").name, "Fine")

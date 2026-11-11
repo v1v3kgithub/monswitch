@@ -28,9 +28,7 @@ from monswitch.core.models import (
 
 HP = EdidIdentity(manufacturer="HPN", product_code=13327, model="HP Z38c", serial="DEMOSERIAL")
 NO_SERIAL = EdidIdentity(manufacturer="LGD", product_code=1826, model=None, serial=None)
-NO_SERIAL_NAMED = EdidIdentity(
-    manufacturer="ACM", product_code=999, model="Cheap 24", serial=None
-)
+NO_SERIAL_NAMED = EdidIdentity(manufacturer="ACM", product_code=999, model="Cheap 24", serial=None)
 
 
 def source(code: int, provenance: Provenance, name: str | None = None) -> InputSource:
@@ -275,17 +273,13 @@ class SwitchConfirmationTest(unittest.TestCase):
 
     def test_unverified_outranks_leaving_host(self) -> None:
         """The stronger warning wins, so the user hears the more specific risk."""
-        result = switch_confirmation(
-            monitor(host_input=0x13), source(0x1F, Provenance.GUESSED)
-        )
+        result = switch_confirmation(monitor(host_input=0x13), source(0x1F, Provenance.GUESSED))
 
         self.assertEqual(result, Confirmation.UNVERIFIED_DESTINATION)
 
     def test_unverified_prompts_even_when_it_is_the_current_input(self) -> None:
         """A guessed code equal to the host value is still not a verified destination."""
-        result = switch_confirmation(
-            monitor(host_input=0x13), source(0x13, Provenance.GUESSED)
-        )
+        result = switch_confirmation(monitor(host_input=0x13), source(0x13, Provenance.GUESSED))
 
         self.assertEqual(result, Confirmation.UNVERIFIED_DESTINATION)
 
@@ -310,9 +304,7 @@ class MonitorTest(unittest.TestCase):
         self.assertEqual(monitor().display_name, "HP Z38c")
 
     def test_display_name_falls_back_to_manufacturer_and_connector(self) -> None:
-        self.assertEqual(
-            monitor(identity=NO_SERIAL, connector="DP-3").display_name, "LGD on DP-3"
-        )
+        self.assertEqual(monitor(identity=NO_SERIAL, connector="DP-3").display_name, "LGD on DP-3")
 
     def test_input_for_finds_by_code(self) -> None:
         usbc = source(0x13, Provenance.LIVE, "USB-C")

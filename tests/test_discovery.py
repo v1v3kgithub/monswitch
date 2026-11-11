@@ -18,6 +18,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from test_sysfs import HP_EDID, LGD_EDID, make_connector
+
 from monswitch.core.ddc import (
     CapabilityInput,
     CommandResult,
@@ -28,8 +30,6 @@ from monswitch.core.ddc import (
 )
 from monswitch.core.discovery import discover
 from monswitch.core.models import Provenance
-
-from test_sysfs import HP_EDID, LGD_EDID, make_connector
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ddcutil"
 
@@ -126,9 +126,9 @@ class ReferenceMachineTest(DiscoveryTestCase):
 
     def test_live_code_absent_from_capabilities_is_still_listed_and_verified(self) -> None:
         """The founding bug: 0x13 is missing from capabilities but is the real input."""
-        monitor = discover(
-            self.ddcutil, root=self.root, include_capabilities=True
-        ).monitors[0].monitor
+        monitor = (
+            discover(self.ddcutil, root=self.root, include_capabilities=True).monitors[0].monitor
+        )
 
         usbc = monitor.input_for(0x13)
 
@@ -138,9 +138,9 @@ class ReferenceMachineTest(DiscoveryTestCase):
         self.assertTrue(usbc.is_verified)
 
     def test_capabilities_entries_are_reported_not_verified(self) -> None:
-        monitor = discover(
-            self.ddcutil, root=self.root, include_capabilities=True
-        ).monitors[0].monitor
+        monitor = (
+            discover(self.ddcutil, root=self.root, include_capabilities=True).monitors[0].monitor
+        )
 
         dp = monitor.input_for(0x0F)
 
@@ -151,9 +151,9 @@ class ReferenceMachineTest(DiscoveryTestCase):
 
     def test_firmware_unnamed_code_stays_guessed_and_unnamed(self) -> None:
         """ADR-0009: 1f must not be promoted, and must not be given an invented name."""
-        monitor = discover(
-            self.ddcutil, root=self.root, include_capabilities=True
-        ).monitors[0].monitor
+        monitor = (
+            discover(self.ddcutil, root=self.root, include_capabilities=True).monitors[0].monitor
+        )
 
         junk = monitor.input_for(0x1F)
 
@@ -181,22 +181,30 @@ class NoSpeculativeInputsTest(DiscoveryTestCase):
     def test_only_reported_and_live_inputs_appear(self) -> None:
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
-            root=self.root,
-            include_capabilities=True,
-        ).monitors[0].monitor
+        monitor = (
+            discover(
+                FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
+                root=self.root,
+                include_capabilities=True,
+            )
+            .monitors[0]
+            .monitor
+        )
 
         self.assertEqual([i.code for i in monitor.inputs], [0x0F, 0x11, 0x13, 0x1F])
 
     def test_codes_the_panel_never_mentioned_are_absent(self) -> None:
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
-            root=self.root,
-            include_capabilities=True,
-        ).monitors[0].monitor
+        monitor = (
+            discover(
+                FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
+                root=self.root,
+                include_capabilities=True,
+            )
+            .monitors[0]
+            .monitor
+        )
 
         for absent in (0x10, 0x12, 0x1B):
             with self.subTest(code=absent):
@@ -206,9 +214,7 @@ class NoSpeculativeInputsTest(DiscoveryTestCase):
         """The honest minimum: one row, because one input is all the monitor has admitted."""
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}), root=self.root
-        ).monitors[0].monitor
+        monitor = discover(FakeDdcutil(live={16: 0x13}), root=self.root).monitors[0].monitor
 
         self.assertEqual([i.code for i in monitor.inputs], [0x13])
 
@@ -216,9 +222,7 @@ class NoSpeculativeInputsTest(DiscoveryTestCase):
         """0x13 is vendor-specific; naming it 'USB-C' would be a guess about this panel."""
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}), root=self.root
-        ).monitors[0].monitor
+        monitor = discover(FakeDdcutil(live={16: 0x13}), root=self.root).monitors[0].monitor
 
         usbc = monitor.input_for(0x13)
 
@@ -229,11 +233,15 @@ class NoSpeculativeInputsTest(DiscoveryTestCase):
     def test_a_config_nickname_is_how_a_name_is_supplied(self) -> None:
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}),
-            root=self.root,
-            confirmed_inputs={"DEMOSERIAL": {0x13: "This Laptop"}},
-        ).monitors[0].monitor
+        monitor = (
+            discover(
+                FakeDdcutil(live={16: 0x13}),
+                root=self.root,
+                confirmed_inputs={"DEMOSERIAL": {0x13: "This Laptop"}},
+            )
+            .monitors[0]
+            .monitor
+        )
 
         usbc = monitor.input_for(0x13)
 
@@ -245,12 +253,16 @@ class ConfirmedInputsTest(DiscoveryTestCase):
     def test_confirmed_entries_outrank_everything(self) -> None:
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
-            root=self.root,
-            include_capabilities=True,
-            confirmed_inputs={"DEMOSERIAL": {0x0F: "Desktop PC"}},
-        ).monitors[0].monitor
+        monitor = (
+            discover(
+                FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
+                root=self.root,
+                include_capabilities=True,
+                confirmed_inputs={"DEMOSERIAL": {0x0F: "Desktop PC"}},
+            )
+            .monitors[0]
+            .monitor
+        )
 
         dp = monitor.input_for(0x0F)
 
@@ -263,12 +275,16 @@ class ConfirmedInputsTest(DiscoveryTestCase):
         """A human confirming a code deliberately outranks the firmware's shrug."""
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
-            root=self.root,
-            include_capabilities=True,
-            confirmed_inputs={"DEMOSERIAL": {0x1F: "Second USB-C"}},
-        ).monitors[0].monitor
+        monitor = (
+            discover(
+                FakeDdcutil(live={16: 0x13}, capabilities={16: REFERENCE_CAPS}),
+                root=self.root,
+                include_capabilities=True,
+                confirmed_inputs={"DEMOSERIAL": {0x1F: "Second USB-C"}},
+            )
+            .monitors[0]
+            .monitor
+        )
 
         junk = monitor.input_for(0x1F)
 
@@ -279,11 +295,15 @@ class ConfirmedInputsTest(DiscoveryTestCase):
     def test_confirmed_map_for_another_monitor_is_not_applied(self) -> None:
         self.one_hp()
 
-        monitor = discover(
-            FakeDdcutil(live={16: 0x13}),
-            root=self.root,
-            confirmed_inputs={"SOMEONE-ELSE": {0x0F: "Wrong"}},
-        ).monitors[0].monitor
+        monitor = (
+            discover(
+                FakeDdcutil(live={16: 0x13}),
+                root=self.root,
+                confirmed_inputs={"SOMEONE-ELSE": {0x0F: "Wrong"}},
+            )
+            .monitors[0]
+            .monitor
+        )
 
         # Since ADR-0014 removed speculative rows, another monitor's confirmed code does not
         # even appear: there is no other source claiming 0x0f exists on this panel.
@@ -416,9 +436,7 @@ class DetectFallbackTest(DiscoveryTestCase):
     def test_detect_failure_is_a_warning_not_a_crash(self) -> None:
         make_connector(self.root, "card1-DP-1", bus=None, edid=HP_EDID)
 
-        result = discover(
-            FakeDdcutil(detect_error=I2cPermissionDenied("denied")), root=self.root
-        )
+        result = discover(FakeDdcutil(detect_error=I2cPermissionDenied("denied")), root=self.root)
 
         self.assertTrue(result.is_empty)
         self.assertIn("could not list monitors", result.warnings[0].message)
@@ -474,9 +492,7 @@ class CollisionTest(DiscoveryTestCase):
             # Withheld entirely: no row, no name, and nothing at the CONFIRMED tier.
             self.assertIsNone(keyed.monitor.input_for(0x12))
             self.assertNotIn("Should not appear", [i.name for i in keyed.monitor.inputs])
-            self.assertNotIn(
-                Provenance.CONFIRMED, [i.provenance for i in keyed.monitor.inputs]
-            )
+            self.assertNotIn(Provenance.CONFIRMED, [i.provenance for i in keyed.monitor.inputs])
             self.assertNotEqual(keyed.monitor.display_name, "Should not appear either")
 
     def test_name_override_applies_when_there_is_no_collision(self) -> None:

@@ -71,8 +71,7 @@ class VersionPinningTest(unittest.TestCase):
         imports = [
             node.lineno
             for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-            and (node.module or "").startswith("gi.repository")
+            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("gi.repository")
         ]
 
         self.assertTrue(pins, "no gi.require_version call found")
@@ -181,21 +180,23 @@ class WindowBehaviourTest(unittest.TestCase):
     @unittest.skipUnless(gtk_picker.GTK_AVAILABLE, "PyGObject/GTK not available")
     def test_every_gtk_api_used_exists(self) -> None:
         """Catches a typo'd or GTK4-only call without constructing a window."""
-        code = NEWLINE.join([
-            "import monswitch.gtk_picker",
-            "from gi.repository import Gtk, Gdk",
-            "names = [",
-            "    (Gtk.WindowType, 'TOPLEVEL'), (Gdk.WindowTypeHint, 'DIALOG'),",
-            "    (Gtk.ReliefStyle, 'NONE'), (Gdk, 'CURRENT_TIME'),",
-            "    (Gtk.Window, 'present_with_time'), (Gtk.Window, 'set_accept_focus'),",
-            "    (Gtk.Window, 'set_focus_on_map'), (Gtk.Window, 'set_decorated'),",
-            "    (Gtk.Window, 'set_skip_taskbar_hint'), (Gtk.Button, 'set_relief'),",
-            "    (Gtk, 'SearchEntry'),",
-            "]",
-            "missing = [n for obj, n in names if not hasattr(obj, n)]",
-            "assert not missing, missing",
-            "print('ok')",
-        ])
+        code = NEWLINE.join(
+            [
+                "import monswitch.gtk_picker",
+                "from gi.repository import Gtk, Gdk",
+                "names = [",
+                "    (Gtk.WindowType, 'TOPLEVEL'), (Gdk.WindowTypeHint, 'DIALOG'),",
+                "    (Gtk.ReliefStyle, 'NONE'), (Gdk, 'CURRENT_TIME'),",
+                "    (Gtk.Window, 'present_with_time'), (Gtk.Window, 'set_accept_focus'),",
+                "    (Gtk.Window, 'set_focus_on_map'), (Gtk.Window, 'set_decorated'),",
+                "    (Gtk.Window, 'set_skip_taskbar_hint'), (Gtk.Button, 'set_relief'),",
+                "    (Gtk, 'SearchEntry'),",
+                "]",
+                "missing = [n for obj, n in names if not hasattr(obj, n)]",
+                "assert not missing, missing",
+                "print('ok')",
+            ]
+        )
 
         result = _subprocess_check(code)
 
@@ -204,12 +205,14 @@ class WindowBehaviourTest(unittest.TestCase):
 
     @unittest.skipUnless(gtk_picker.GTK_AVAILABLE, "PyGObject/GTK not available")
     def test_css_parses(self) -> None:
-        code = NEWLINE.join([
-            "import monswitch.gtk_picker as gp",
-            "from gi.repository import Gtk",
-            "Gtk.CssProvider().load_from_data(gp.CSS)",
-            "print('ok')",
-        ])
+        code = NEWLINE.join(
+            [
+                "import monswitch.gtk_picker as gp",
+                "from gi.repository import Gtk",
+                "Gtk.CssProvider().load_from_data(gp.CSS)",
+                "print('ok')",
+            ]
+        )
 
         result = _subprocess_check(code)
 

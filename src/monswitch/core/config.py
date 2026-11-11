@@ -44,9 +44,9 @@ from pathlib import Path
 from types import MappingProxyType
 
 __all__ = [
+    "DEFAULT_CONFIG_PATH",
     "Config",
     "ConfigError",
-    "DEFAULT_CONFIG_PATH",
     "MonitorConfig",
     "config_path",
     "load",
@@ -191,9 +191,7 @@ def _build(raw: object, target: Path, warnings: list[str]) -> Config:
         if isinstance(value, bool):
             confirm_switch = value
         else:
-            warnings.append(
-                f"confirm_switch must be true or false, got {value!r}; using true"
-            )
+            warnings.append(f"confirm_switch must be true or false, got {value!r}; using true")
 
     monitors: dict[str, MonitorConfig] = {}
     raw_monitors = raw.get("monitors", {})
@@ -241,14 +239,11 @@ def _build_monitor(key: str, entry: Mapping[str, object], warnings: list[str]) -
         code = _parse_code(code_text)
         if code is None:
             warnings.append(
-                f"[monitors.{key!r}.inputs] {code_text!r} is not a hex input code "
-                'like "0x13"'
+                f'[monitors.{key!r}.inputs] {code_text!r} is not a hex input code like "0x13"'
             )
             continue
         if not isinstance(label, str) or not label.strip():
-            warnings.append(
-                f"[monitors.{key!r}.inputs] {code_text!r} must map to a non-empty name"
-            )
+            warnings.append(f"[monitors.{key!r}.inputs] {code_text!r} must map to a non-empty name")
             continue
         inputs[code] = label.strip()
 

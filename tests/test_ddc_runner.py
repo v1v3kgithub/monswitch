@@ -90,9 +90,7 @@ class GetvcpTest(unittest.TestCase):
 
         Ddcutil(runner=runner).getvcp_input(16)
 
-        self.assertEqual(
-            runner.calls[0], ("ddcutil", "--bus", "16", "getvcp", "60", "--terse")
-        )
+        self.assertEqual(runner.calls[0], ("ddcutil", "--bus", "16", "getvcp", "60", "--terse"))
 
     def test_returns_the_parsed_code(self) -> None:
         runner = FakeRunner(stdout=fixture("getvcp60-terse"))

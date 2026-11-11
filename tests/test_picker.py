@@ -257,9 +257,7 @@ class ActivationTest(unittest.TestCase):
                 model.select(index)
                 message = model.activate().message
 
-                self.assertTrue(
-                    message.startswith("Press Enter again to switch"), message
-                )
+                self.assertTrue(message.startswith("Press Enter again to switch"), message)
                 self.assertNotIn("try anyway", message)
 
     def test_blocked_monitor_never_arms_or_switches(self) -> None:
