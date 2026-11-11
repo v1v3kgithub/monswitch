@@ -1,4 +1,4 @@
-# MonitorSwitcher — agent brief
+# monswitch — agent brief
 
 **Canonical agent doc.** `CLAUDE.md` and `GEMINI.md` at the repo root are pointers at this
 file; keep the substance here so the two cannot drift apart again (they have, twice).

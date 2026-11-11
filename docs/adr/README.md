@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Design decisions for MonitorSwitcher. These are the authoritative design record — they
+Design decisions for monswitch. These are the authoritative design record — they
 supersede any older sketch in `README.md` or the agent docs. Domain vocabulary lives in
 [`../CONTEXT.md`](../CONTEXT.md).
 

@@ -4,7 +4,7 @@
 > **Superseded in part by:** [ADR-0013](0013-identity-host-input-and-target-resolution.md),
 > [ADR-0014](0014-report-only-what-the-monitor-says.md) (config is read only when requested)
 
-MonitorSwitcher supports optional user customizations for friendly display names, input aliases, and safety preferences in `~/.config/monswitch/config.toml`.
+monswitch supports optional user customizations for friendly display names, input aliases, and safety preferences in `~/.config/monswitch/config.toml`.
 
 We decided on a serial-keyed nested dictionary schema:
 - Global settings (like `confirm_switch = true`) live at the root table.

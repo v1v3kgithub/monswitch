@@ -1,6 +1,6 @@
-# MonitorSwitcher Domain Context
+# monswitch — domain vocabulary
 
-Core domain language for MonitorSwitcher, a tool to inspect and switch external monitor video inputs over DDC/CI.
+Core domain language for monswitch, a tool to inspect and switch external monitor video inputs over DDC/CI.
 
 ## Language
 
@@ -13,7 +13,7 @@ A physical or logical video port on a **Monitor** selectable via VESA MCCS VCP f
 _Avoid_: Channel, Port, Device
 
 **Host Input**:
-The specific **Input Source** currently receiving the video feed and DDC/CI link from the local computer running MonitorSwitcher.
+The specific **Input Source** currently receiving the video feed and DDC/CI link from the local computer running monswitch.
 _Avoid_: Active input (when referring specifically to the host's machine connection)
 
 **VCP Code**:
