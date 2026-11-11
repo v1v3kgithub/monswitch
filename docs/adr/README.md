@@ -9,13 +9,13 @@ amend several of the earlier eight.
 
 | ADR | Decision | Status | Relations |
 | --- | --- | --- | --- |
-| [0001](0001-zero-config-dynamic-discovery.md) | Zero-config dynamic input discovery; `learn` is optional, not mandatory | Accepted | Refined by 0009 |
+| [0001](0001-zero-config-dynamic-discovery.md) | Zero-config dynamic input discovery; `learn` is optional, not mandatory | **Superseded in part** | Refined by 0009; superseded in part by 0014 |
 | [0002](0002-switch-confirmation-and-safety.md) | Confirm before switching away from the Host Input; `confirm_switch` opt-out | Accepted | Refined by 0009 |
 | [0003](0003-optimistic-bus-caching.md) | Optimistic I²C bus cache with detect fallback | **Superseded in part** | Superseded in part by 0010 |
 | [0004](0004-auto-targeting-flat-presentation.md) | Auto-target a single monitor; flat badge presentation | Accepted | Refined by 0013 |
 | [0005](0005-direct-python-import-for-extension.md) | Ulauncher extension imports the core directly | Accepted | Refined by 0012 |
 | [0006](0006-input-resolution-and-disambiguation.md) | Input lookup priority and terminal disambiguation | Accepted | Refined by 0011 |
-| [0007](0007-config-schema.md) | Serial-keyed TOML config schema | **Superseded in part** | Superseded in part by 0013 |
+| [0007](0007-config-schema.md) | Serial-keyed TOML config schema | **Superseded in part** | Superseded in part by 0013, 0014 |
 | [0008](0008-gtk-popup-picker-ux.md) | GTK3 Spotlight-style popup picker | Accepted | Refined by 0009, 0011 |
 | [0009](0009-input-provenance-and-trust-tiers.md) | Input provenance (`confirmed`/`live`/`reported`/`guessed`) and trust-tiered confirmation | Accepted | Refines 0001, 0002, 0008 |
 | [0010](0010-sysfs-first-monitor-resolution.md) | Resolve monitors from sysfs; `ddcutil detect` is the fallback | Accepted | Supersedes in part 0003 |
@@ -26,7 +26,7 @@ amend several of the earlier eight.
 
 ## The safety spine
 
-Four decisions carry the weight, because `setvcp 60` cannot be undone from software:
+Five decisions carry the weight, because `setvcp 60` cannot be undone from software:
 
 - **0002** — confirm before leaving the Host Input.
 - **0009** — the destination's provenance tiers that confirmation; an unverified destination
@@ -35,6 +35,8 @@ Four decisions carry the weight, because `setvcp 60` cannot be undone from softw
   switch. Identity collisions discard confirmed maps rather than misapply them.
 - **0012** — a snapshot-rendered marker is provisional, so stale state cannot make a switch
   look safe.
+- **0014** — nothing speculative is ever offered as a destination, so the warning in 0009 is
+  spent only on rows the monitor itself reported.
 
 Separately and unconditionally: **an agent never issues `setvcp 60` without explicit,
 in-the-moment human confirmation.** `confirm_switch` and `-y/--force` are user affordances and
