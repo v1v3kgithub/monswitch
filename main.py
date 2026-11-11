@@ -83,8 +83,7 @@ if BOOTSTRAP_ERROR is None:
         DiscoverySnapshot,
         ItemAction,
         LauncherItem,
-        build_items,
-        resolve_action,
+        LauncherSession,
     )
     from monswitch.core.picker import ActivationKind
     from monswitch.core.switching import SwitchRefused, switch_input
@@ -98,7 +97,7 @@ class MonswitchExtension(Extension):
         self.subscribe(KeywordQueryEvent, QueryListener())
         self.subscribe(ItemEnterEvent, EnterListener())
         self._snapshot: object | None = None
-        self._model: object | None = None
+        self._session: object | None = None
 
     # -- lazily built, never at import or construction time --------------
 
@@ -133,18 +132,18 @@ class MonswitchExtension(Extension):
             self._snapshot = DiscoverySnapshot(discover=run)
         return self._snapshot  # type: ignore[return-value]
 
-    def model(self, query: str):
-        """A model for this query, rebuilt when the snapshot refreshes.
+    def session(self):
+        """The session holding the model between events.
 
-        Kept between queries so an armed row survives the keystroke that follows it; rebuilt
-        when the data changes, which drops the arming -- the same rule the GTK picker follows.
+        All model handling lives in the core, because a launcher's query and activation paths
+        must reach it differently and getting that wrong is invisible: routing Enter through
+        the query path disarms the very row it is meant to confirm, so nothing switches.
         """
-        snapshot = self.snapshot()
-        stale_before = snapshot.is_stale
-        if self._model is None or stale_before:
-            self._model = snapshot.model(confirm_switch=self.config().confirm_switch)
-        self._model.set_query(query)  # type: ignore[union-attr]
-        return self._model
+        if self._session is None:
+            self._session = LauncherSession(
+                snapshot=self.snapshot(), confirm_switch=self.config().confirm_switch
+            )
+        return self._session
 
 
 def _render(items: tuple[LauncherItem, ...]) -> RenderResultListAction:
@@ -191,17 +190,7 @@ class QueryListener(EventListener):
 
         query = (event.get_argument() or "").strip()
         try:
-            snapshot = extension.snapshot()
-            model = extension.model(query)
-            items = build_items(
-                model,
-                snapshot_stale=snapshot.is_stale,
-                empty_message=(
-                    "No external monitor with DDC/CI found"
-                    if not model.rows and not query
-                    else None
-                ),
-            )
+            items = extension.session().items_for(query)
         except DdcutilError as exc:
             return _error_item(str(exc))
         except Exception as exc:
@@ -219,8 +208,8 @@ class EnterListener(EventListener):
         if action.kind is ActionKind.NOTHING:
             return HideWindowAction()
 
-        model = extension.model("")
-        kind, row = resolve_action(model, action)
+        session = extension.session()
+        kind, row = session.activate(action)
 
         if row is None or kind is ActivationKind.NOTHING:
             return _error_item("that input is no longer available; try again")
@@ -232,8 +221,9 @@ class EnterListener(EventListener):
             )
 
         if kind is ActivationKind.ARM:
-            # Re-render with the row asking for confirmation, and keep the window open.
-            return _render(build_items(model, snapshot_stale=extension.snapshot().is_stale))
+            # Re-render with the row asking for confirmation, keeping the window open and the
+            # query untouched -- re-querying here would disarm it immediately.
+            return _render(session.rerender())
 
         config = extension.config()
         try:
@@ -250,7 +240,7 @@ class EnterListener(EventListener):
         except (SwitchRefused, DdcutilError) as exc:
             return _error_item(str(exc))
 
-        extension.snapshot().invalidate()
+        session.invalidate()
         return HideWindowAction()
 
 

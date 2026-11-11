@@ -25,6 +25,7 @@ from monswitch.core.launcher import (
     ActionKind,
     DiscoverySnapshot,
     ItemAction,
+    LauncherSession,
     build_items,
     resolve_action,
 )
@@ -432,13 +433,138 @@ class ExtensionShapeTest(unittest.TestCase):
         )
 
     def test_extension_delegates_rather_than_reimplementing(self) -> None:
-        """Confirmation must come from the shared picker, not a second copy here."""
+        """Confirmation must come from the shared core, not a second copy here."""
         text = (self.extension_dir / "main.py").read_text()
 
         self.assertIn("from monswitch.core.launcher import", text)
-        self.assertIn("resolve_action", text)
+        self.assertIn("LauncherSession", text)
         self.assertNotIn("def _warning_for", text)
+
+    def test_the_extension_does_not_touch_the_model_directly(self) -> None:
+        """Regression: reaching the model through the query path on Enter disarmed the row.
+
+        The query/activation split lives in LauncherSession precisely so the extension cannot
+        get it wrong, so the extension should never call set_query or build the model itself.
+        """
+        text = (self.extension_dir / "main.py").read_text()
+
+        self.assertNotIn("set_query", text)
+        self.assertNotIn("snapshot.model(", text)
+        self.assertNotIn("build_items(", text)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LauncherSessionTest(unittest.TestCase):
+    """The query/activation split, which the extension got wrong twice.
+
+    Reported symptom both times: selecting an input in Ulauncher and pressing Enter twice did
+    nothing at all. The cause was reaching the model through the query path on activation --
+    `set_query` disarms, so each Enter re-armed and the switch was unreachable.
+    """
+
+    def setUp(self) -> None:
+        self.clock = FakeClock()
+        self.snapshot = DiscoverySnapshot(
+            discover=lambda: Discovery(monitors=(keyed(),)),
+            ttl=10.0,
+            clock=self.clock,
+        )
+
+    def session(self, *, confirm_switch: bool = True) -> LauncherSession:
+        return LauncherSession(snapshot=self.snapshot, confirm_switch=confirm_switch)
+
+    def desktop_action(self) -> ItemAction:
+        return ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F)
+
+    def test_first_activation_arms_and_second_switches(self) -> None:
+        """The exact sequence that did nothing: render, Enter, Enter."""
+        session = self.session()
+        session.items_for("")
+
+        first, row = session.activate(self.desktop_action())
+        second, _ = session.activate(self.desktop_action())
+
+        self.assertEqual(first, ActivationKind.ARM)
+        self.assertIsNotNone(row)
+        self.assertEqual(second, ActivationKind.SWITCH)
+
+    def test_activation_does_not_reset_the_query(self) -> None:
+        session = self.session()
+        session.items_for("desktop")
+
+        session.activate(self.desktop_action())
+
+        # Still filtered: an activation must not behave like a new query.
+        self.assertEqual(len(session.rerender()), 1)
+
+    def test_rerender_keeps_the_row_armed(self) -> None:
+        session = self.session()
+        session.items_for("")
+        session.activate(self.desktop_action())
+
+        armed = [item for item in session.rerender() if item.is_warning]
+
+        self.assertEqual(len(armed), 1)
+        self.assertTrue(armed[0].subtitle.startswith("Press Enter again to switch"))
+
+    def test_typing_cancels_a_pending_confirmation(self) -> None:
+        """Changing the query should disarm: the user moved on."""
+        session = self.session()
+        session.items_for("")
+        session.activate(self.desktop_action())
+
+        session.items_for("desk")
+
+        self.assertFalse(any(item.is_warning for item in session.rerender()))
+        self.assertEqual(session.activate(self.desktop_action())[0], ActivationKind.ARM)
+
+    def test_active_input_switches_on_the_first_enter(self) -> None:
+        session = self.session()
+        session.items_for("")
+
+        kind, _row = session.activate(ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x13))
+
+        self.assertEqual(kind, ActivationKind.SWITCH)
+
+    def test_activation_without_a_prior_query_still_resolves(self) -> None:
+        """The daemon may have restarted between rendering a row and receiving the Enter."""
+        session = self.session()
+
+        kind, row = session.activate(self.desktop_action())
+
+        self.assertEqual(kind, ActivationKind.ARM)
+        self.assertIsNotNone(row)
+
+    def test_invalidate_drops_the_arming_and_refreshes(self) -> None:
+        session = self.session()
+        session.items_for("")
+        session.activate(self.desktop_action())
+
+        session.invalidate()
+
+        self.assertTrue(self.snapshot.is_stale)
+        self.assertFalse(any(item.is_warning for item in session.rerender()))
+
+    def test_a_stale_snapshot_rebuild_drops_the_arming(self) -> None:
+        """Arming was against data that has since changed, so dropping it is the safe way."""
+        session = self.session()
+        session.items_for("")
+        session.activate(self.desktop_action())
+
+        self.clock.advance(11)
+
+        self.assertFalse(any(item.is_warning for item in session.rerender()))
+
+    def test_opt_out_switches_a_verified_input_on_the_first_enter(self) -> None:
+        session = self.session(confirm_switch=False)
+        session.items_for("")
+
+        kind, _row = session.activate(self.desktop_action())
+
+        self.assertEqual(kind, ActivationKind.SWITCH)
+
+    def test_empty_query_lists_everything(self) -> None:
+        self.assertEqual(len(self.session().items_for("")), 3)

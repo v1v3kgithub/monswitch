@@ -40,6 +40,7 @@ __all__ = [
     "DiscoverySnapshot",
     "ItemAction",
     "LauncherItem",
+    "LauncherSession",
     "build_items",
     "resolve_action",
 ]
@@ -277,3 +278,66 @@ class DiscoverySnapshot:
         monitors: Sequence[KeyedMonitor] = result.monitors
         trusted = not self.is_stale
         return PickerModel(monitors, confirm_switch=confirm_switch if trusted else True)
+
+
+@dataclass
+class LauncherSession:
+    """Holds a launcher's model across queries and activations.
+
+    This exists because the obvious way to write it is wrong, and was. A launcher handles two
+    kinds of event — a query, and an item being activated — and the model must be reached
+    differently for each:
+
+    * a **query** applies :meth:`~monswitch.core.picker.PickerModel.set_query`, which drops any
+      pending confirmation. That is correct: typing something new should cancel an armed row.
+    * an **activation** must *not* touch the query, because ``set_query`` disarms. Routing
+      Enter through it meant every press re-armed the row and nothing ever switched — the
+      confirmation was unreachable, with the user pressing Enter repeatedly to no effect.
+
+    Keeping both paths here, rather than in the extension, is what makes the distinction
+    testable without a launcher daemon.
+    """
+
+    snapshot: DiscoverySnapshot
+    confirm_switch: bool = True
+    _model: PickerModel | None = field(default=None, init=False, repr=False)
+
+    def _ensure_model(self) -> PickerModel:
+        """The current model, rebuilt when the snapshot has moved on.
+
+        A rebuild drops any armed row, which is the safe direction: the confirmation was
+        armed against data that has since changed.
+        """
+        if self._model is None or self.snapshot.is_stale:
+            self._model = self.snapshot.model(confirm_switch=self.confirm_switch)
+        return self._model
+
+    def items_for(self, query: str) -> tuple[LauncherItem, ...]:
+        """Rows for a query. Changing the query cancels any pending confirmation."""
+        model = self._ensure_model()
+        model.set_query(query)
+        return build_items(
+            model,
+            snapshot_stale=self.snapshot.is_stale,
+            empty_message=(
+                "No external monitor with DDC/CI found" if not model.rows and not query else None
+            ),
+        )
+
+    def activate(self, action: ItemAction) -> tuple[ActivationKind, PickerRow | None]:
+        """Apply an activation, leaving the query and any arming untouched.
+
+        Deliberately does not call :meth:`items_for`: that would disarm the row this
+        activation is meant to confirm.
+        """
+        return resolve_action(self._ensure_model(), action)
+
+    def rerender(self) -> tuple[LauncherItem, ...]:
+        """Re-render the current rows without changing the query — e.g. after arming."""
+        model = self._ensure_model()
+        return build_items(model, snapshot_stale=self.snapshot.is_stale)
+
+    def invalidate(self) -> None:
+        """Drop the cached model and force the snapshot to refresh. Call after a switch."""
+        self._model = None
+        self.snapshot.invalidate()
