@@ -29,7 +29,13 @@ from monswitch.core.launcher import (
     build_items,
     resolve_action,
 )
-from monswitch.core.models import InputSource, KeyedMonitor, Monitor, Provenance
+from monswitch.core.models import (
+    Confirmation,
+    InputSource,
+    KeyedMonitor,
+    Monitor,
+    Provenance,
+)
 from monswitch.core.picker import ActivationKind, PickerModel
 
 HP = EdidIdentity(manufacturer="HPN", product_code=13327, model="HP Z38c", serial="DEMOSERIAL")
@@ -74,21 +80,6 @@ class ItemBuildingTest(unittest.TestCase):
 
         self.assertEqual(usbc.action.kind, ActionKind.SWITCH)
         self.assertIn("current input", usbc.subtitle)
-
-    def test_confirmed_input_arms_first(self) -> None:
-        items = build_items(model())
-
-        desktop = next(i for i in items if i.action.code == 0x0F)
-
-        self.assertEqual(desktop.action.kind, ActionKind.ARM)
-
-    def test_unverified_input_is_labelled(self) -> None:
-        items = build_items(model())
-
-        hdmi = next(i for i in items if i.action.code == 0x11)
-
-        self.assertEqual(hdmi.action.kind, ActionKind.ARM)
-        self.assertIn("unverified", hdmi.subtitle)
 
     def test_subtitle_names_the_monitor(self) -> None:
         items = build_items(model())
@@ -139,31 +130,10 @@ class ItemBuildingTest(unittest.TestCase):
 
         self.assertTrue(any("checking" in i.subtitle for i in items))
 
-    def test_armed_row_shows_the_action_first(self) -> None:
-        subject = model()
-        subject.select(1)
-        subject.activate()
-
-        items = build_items(subject)
-        armed = next(i for i in items if i.action.code == 0x0F)
-
-        self.assertTrue(armed.is_warning)
-        self.assertTrue(armed.subtitle.startswith("Press Enter again to switch"))
-        self.assertEqual(armed.action.kind, ActionKind.SWITCH)
-
-    def test_armed_row_keeps_its_name_visible(self) -> None:
-        subject = model()
-        subject.select(1)
-        subject.activate()
-
-        armed = next(i for i in build_items(subject) if i.action.code == 0x0F)
-
-        self.assertIn("Desktop PC", armed.title)
-
 
 class ActionRoundTripTest(unittest.TestCase):
     def test_serialises_and_rebuilds(self) -> None:
-        action = ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F)
+        action = ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F)
 
         self.assertEqual(ItemAction.from_data(action.as_data()), action)
 
@@ -184,9 +154,9 @@ class ResolveActionTest(unittest.TestCase):
     def test_resolves_by_bus_and_code(self) -> None:
         subject = model()
 
-        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F))
+        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F))
 
-        self.assertEqual(kind, ActivationKind.ARM)
+        self.assertEqual(kind, ActivationKind.SWITCH)
         self.assertIsNotNone(row)
         self.assertEqual(row.source.code, 0x0F)
 
@@ -195,18 +165,9 @@ class ResolveActionTest(unittest.TestCase):
         subject = model()
         subject.set_query("desktop")
 
-        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F))
+        kind, row = resolve_action(subject, ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F))
 
         self.assertEqual(row.source.code, 0x0F)
-        self.assertEqual(kind, ActivationKind.ARM)
-
-    def test_second_activation_switches(self) -> None:
-        subject = model()
-        action = ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F)
-
-        resolve_action(subject, action)
-        kind, _row = resolve_action(subject, action)
-
         self.assertEqual(kind, ActivationKind.SWITCH)
 
     def test_vanished_row_does_nothing(self) -> None:
@@ -331,12 +292,13 @@ class SnapshotTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             snapshot.get()
 
-    def test_unrefreshable_stale_data_forces_confirmation_on(self) -> None:
-        """ADR-0012: an opt-out must not combine with unconfirmed data to switch unwarned.
+    def test_unrefreshable_stale_data_still_ignores_the_opt_out(self) -> None:
+        """ADR-0012 built the model with confirmation forced on when data is unconfirmed.
 
-        The case is a refresh that *failed*, so the previous result is still being served.
-        Data that was stale and refreshed successfully is fresh, and is trusted -- an earlier
-        version of this test confused the two.
+        Since ADR-0018 removed arming, that no longer changes what a keypress does in the
+        graphical front-ends -- the verdict is computed and nothing acts on it. The model is
+        still built the conservative way, and this pins that, but the protection it used to
+        provide is gone by design. ADR-0018 records it.
         """
         snapshot = self.snapshot(ttl=10.0)
         snapshot.get()
@@ -348,21 +310,19 @@ class SnapshotTest(unittest.TestCase):
         snapshot.discover = boom
 
         built = snapshot.model(confirm_switch=False)
-        built.select(1)
 
         self.assertTrue(snapshot.is_stale)
-        self.assertEqual(built.activate().kind, ActivationKind.ARM)
+        self.assertEqual(built.rows[1].confirmation, Confirmation.LEAVING_HOST)
 
-    def test_successfully_refreshed_data_is_trusted(self) -> None:
+    def test_successfully_refreshed_data_honours_the_opt_out(self) -> None:
         snapshot = self.snapshot(ttl=10.0)
         snapshot.get()
         self.clock.advance(11)
 
         built = snapshot.model(confirm_switch=False)
-        built.select(1)
 
         self.assertFalse(snapshot.is_stale)
-        self.assertEqual(built.activate().kind, ActivationKind.SWITCH)
+        self.assertEqual(built.rows[1].confirmation, Confirmation.NONE)
 
     def test_fresh_snapshot_honours_the_preference(self) -> None:
         snapshot = self.snapshot()
@@ -432,12 +392,6 @@ class ExtensionShapeTest(unittest.TestCase):
             text.index("from monswitch.core"),
         )
 
-    def test_front_end_asks_for_single_enter(self) -> None:
-        """ADR-0017: the extension must pass require_confirmation=False explicitly."""
-        text = (self.extension_dir / "main.py").read_text()
-
-        self.assertIn("require_confirmation=False", text)
-
     def test_extension_delegates_rather_than_reimplementing(self) -> None:
         """Confirmation must come from the shared core, not a second copy here."""
         text = (self.extension_dir / "main.py").read_text()
@@ -464,160 +418,81 @@ if __name__ == "__main__":
 
 
 class LauncherSessionTest(unittest.TestCase):
-    """The query/activation split, which the extension got wrong twice.
+    """Query and activation reach the model by different paths, and must stay separate.
 
-    Reported symptom both times: selecting an input in Ulauncher and pressing Enter twice did
-    nothing at all. The cause was reaching the model through the query path on activation --
-    `set_query` disarms, so each Enter re-armed and the switch was unreachable.
+    The split was introduced because routing Enter through the query path cleared a pending
+    confirmation, so nothing ever switched. Arming is gone (ADR-0018) and that particular
+    failure cannot recur, but re-querying on activation would still reset the selection out
+    from under the row being acted on.
     """
-
-    def setUp(self) -> None:
-        self.clock = FakeClock()
-        self.snapshot = DiscoverySnapshot(
-            discover=lambda: Discovery(monitors=(keyed(),)),
-            ttl=10.0,
-            clock=self.clock,
-        )
-
-    def session(self, *, confirm_switch: bool = True) -> LauncherSession:
-        return LauncherSession(snapshot=self.snapshot, confirm_switch=confirm_switch)
-
-    def desktop_action(self) -> ItemAction:
-        return ItemAction(kind=ActionKind.ARM, bus=16, code=0x0F)
-
-    def test_first_activation_arms_and_second_switches(self) -> None:
-        """The exact sequence that did nothing: render, Enter, Enter."""
-        session = self.session()
-        session.items_for("")
-
-        first, row = session.activate(self.desktop_action())
-        second, _ = session.activate(self.desktop_action())
-
-        self.assertEqual(first, ActivationKind.ARM)
-        self.assertIsNotNone(row)
-        self.assertEqual(second, ActivationKind.SWITCH)
-
-    def test_activation_does_not_reset_the_query(self) -> None:
-        session = self.session()
-        session.items_for("desktop")
-
-        session.activate(self.desktop_action())
-
-        # Still filtered: an activation must not behave like a new query.
-        self.assertEqual(len(session.rerender()), 1)
-
-    def test_rerender_keeps_the_row_armed(self) -> None:
-        session = self.session()
-        session.items_for("")
-        session.activate(self.desktop_action())
-
-        armed = [item for item in session.rerender() if item.is_warning]
-
-        self.assertEqual(len(armed), 1)
-        self.assertTrue(armed[0].subtitle.startswith("Press Enter again to switch"))
-
-    def test_typing_cancels_a_pending_confirmation(self) -> None:
-        """Changing the query should disarm: the user moved on."""
-        session = self.session()
-        session.items_for("")
-        session.activate(self.desktop_action())
-
-        session.items_for("desk")
-
-        self.assertFalse(any(item.is_warning for item in session.rerender()))
-        self.assertEqual(session.activate(self.desktop_action())[0], ActivationKind.ARM)
-
-    def test_active_input_switches_on_the_first_enter(self) -> None:
-        session = self.session()
-        session.items_for("")
-
-        kind, _row = session.activate(ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x13))
-
-        self.assertEqual(kind, ActivationKind.SWITCH)
-
-    def test_activation_without_a_prior_query_still_resolves(self) -> None:
-        """The daemon may have restarted between rendering a row and receiving the Enter."""
-        session = self.session()
-
-        kind, row = session.activate(self.desktop_action())
-
-        self.assertEqual(kind, ActivationKind.ARM)
-        self.assertIsNotNone(row)
-
-    def test_invalidate_drops_the_arming_and_refreshes(self) -> None:
-        session = self.session()
-        session.items_for("")
-        session.activate(self.desktop_action())
-
-        session.invalidate()
-
-        self.assertTrue(self.snapshot.is_stale)
-        self.assertFalse(any(item.is_warning for item in session.rerender()))
-
-    def test_a_stale_snapshot_rebuild_drops_the_arming(self) -> None:
-        """Arming was against data that has since changed, so dropping it is the safe way."""
-        session = self.session()
-        session.items_for("")
-        session.activate(self.desktop_action())
-
-        self.clock.advance(11)
-
-        self.assertFalse(any(item.is_warning for item in session.rerender()))
-
-    def test_opt_out_switches_a_verified_input_on_the_first_enter(self) -> None:
-        session = self.session(confirm_switch=False)
-        session.items_for("")
-
-        kind, _row = session.activate(self.desktop_action())
-
-        self.assertEqual(kind, ActivationKind.SWITCH)
-
-    def test_empty_query_lists_everything(self) -> None:
-        self.assertEqual(len(self.session().items_for("")), 3)
-
-
-class SingleEnterSessionTest(unittest.TestCase):
-    """The launcher switches on the first Enter (ADR-0017)."""
 
     def setUp(self) -> None:
         self.clock = FakeClock()
         self.snapshot = DiscoverySnapshot(
             discover=lambda: Discovery(monitors=(keyed(),)), ttl=10.0, clock=self.clock
         )
-        self.session = LauncherSession(snapshot=self.snapshot, require_confirmation=False)
+        self.session = LauncherSession(snapshot=self.snapshot)
 
-    def test_first_activation_switches(self) -> None:
+    def action(self, code: int = 0x0F) -> ItemAction:
+        return ItemAction(kind=ActionKind.SWITCH, bus=16, code=code)
+
+    def test_activation_switches_on_the_first_press(self) -> None:
         self.session.items_for("")
 
-        kind, row = self.session.activate(ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F))
+        kind, row = self.session.activate(self.action())
+
+        self.assertEqual(kind, ActivationKind.SWITCH)
+        self.assertEqual(row.source.code, 0x0F)
+
+    def test_activation_does_not_reset_the_query(self) -> None:
+        self.session.items_for("desktop")
+
+        self.session.activate(self.action())
+
+        self.assertEqual(len(self.session.items_for("desktop")), 1)
+
+    def test_activation_without_a_prior_query_still_resolves(self) -> None:
+        """The daemon may have restarted between rendering a row and receiving the Enter."""
+        kind, row = self.session.activate(self.action())
 
         self.assertEqual(kind, ActivationKind.SWITCH)
         self.assertIsNotNone(row)
 
-    def test_items_never_ask_for_a_second_enter(self) -> None:
-        items = self.session.items_for("")
-
-        self.assertFalse(any(item.is_warning for item in items))
-        self.assertFalse(any("Enter again" in item.subtitle for item in items))
-
-    def test_every_row_is_directly_actionable(self) -> None:
+    def test_items_never_ask_for_a_second_press(self) -> None:
         items = self.session.items_for("")
 
         self.assertTrue(all(item.action.kind is ActionKind.SWITCH for item in items))
+        self.assertFalse(any("Enter again" in item.subtitle for item in items))
 
     def test_rows_still_say_which_inputs_are_unverified(self) -> None:
-        items = self.session.items_for("")
-
-        self.assertTrue(any("unverified" in item.subtitle for item in items))
+        self.assertTrue(any("unverified" in item.subtitle for item in self.session.items_for("")))
 
     def test_an_unreadable_monitor_is_still_blocked(self) -> None:
         snapshot = DiscoverySnapshot(
             discover=lambda: Discovery(monitors=(keyed(HP, USBC, DESKTOP, host_input=None),)),
             clock=self.clock,
         )
-        session = LauncherSession(snapshot=snapshot, require_confirmation=False)
+        session = LauncherSession(snapshot=snapshot)
         session.items_for("")
 
-        kind, _row = session.activate(ItemAction(kind=ActionKind.SWITCH, bus=16, code=0x0F))
+        kind, _row = session.activate(self.action())
 
         self.assertEqual(kind, ActivationKind.BLOCKED)
+
+    def test_a_vanished_row_does_nothing(self) -> None:
+        self.session.items_for("")
+
+        kind, row = self.session.activate(self.action(0xAA))
+
+        self.assertEqual(kind, ActivationKind.NOTHING)
+        self.assertIsNone(row)
+
+    def test_invalidate_forces_a_refresh(self) -> None:
+        self.session.items_for("")
+
+        self.session.invalidate()
+
+        self.assertTrue(self.snapshot.is_stale)
+
+    def test_no_arm_action_kind_exists(self) -> None:
+        self.assertEqual({kind.value for kind in ActionKind}, {"switch", "blocked", "nothing"})

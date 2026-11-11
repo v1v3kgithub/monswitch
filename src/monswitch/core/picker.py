@@ -1,22 +1,20 @@
 """The picker's logic, with no toolkit attached.
 
 ADR-0008 specifies a Spotlight-style popup: type to filter, arrow keys to move, Enter to
-choose, and — when the choice would switch the monitor away from this machine — a second Enter
-to confirm, with the row itself turning into the warning.
+choose. Per ADR-0017 that Enter switches immediately — there is no confirmation step in the
+graphical front-ends, and ADR-0018 removed the arming machinery that used to provide one.
 
 All of that is state, not drawing, so it lives here and is tested without a display. The GTK
-layer is left holding widgets and key events, which keeps the front-end thin as the unified-core
-convention requires, and means the Ulauncher extension can reuse the same filtering and the
-same confirmation behaviour rather than reimplementing them.
+layer is left holding widgets and key events, which keeps the front-end thin as the
+unified-core convention requires, and means the Ulauncher extension reuses the same filtering
+rather than reimplementing it.
 
 Presentation is flat, per ADR-0004: every input of every monitor is one row, badged with its
 monitor when more than one is connected, so a single query can match both.
 
-The arming mechanic is the picker's form of confirmation. It exists because a popup cannot show
-a modal dialog without ceasing to be a popup, and because ADR-0002 and ADR-0009 both require a
-deliberate second act before an irreversible switch. Arming is per row and is dropped the
-moment anything else happens — a keystroke, a filter change, a move — so a stale "press Enter
-again" can never be satisfied by an Enter the user meant for something else.
+Each row still carries its :class:`~monswitch.core.models.Confirmation` verdict. Nothing here
+acts on it any more, but it is what the row's "unverified" note is drawn from, and it is what
+the CLI — which does still confirm — reads.
 """
 
 from __future__ import annotations
@@ -58,10 +56,6 @@ class PickerRow:
         return self.source.label
 
     @property
-    def needs_confirmation(self) -> bool:
-        return self.confirmation.requires_prompt
-
-    @property
     def is_blocked(self) -> bool:
         return self.confirmation is Confirmation.BLOCKED
 
@@ -95,10 +89,7 @@ class ActivationKind(Enum):
     """What pressing Enter on a row means."""
 
     SWITCH = "switch"
-    """Go ahead: either no confirmation was needed, or it has now been given."""
-
-    ARM = "arm"
-    """Confirmation needed. The row shows a warning and waits for a second Enter."""
+    """Go ahead and switch."""
 
     BLOCKED = "blocked"
     """Refused. The Host Input is unknown, so the risk cannot be assessed (ADR-0013)."""
@@ -120,21 +111,6 @@ class Activation:
         return self.kind is ActivationKind.SWITCH
 
 
-def _warning_for(row: PickerRow) -> str:
-    """The text an armed row shows beside its name.
-
-    Leads with the action, because the first version led with the risk — "Unverified input —
-    may not exist. Press Enter again to try anyway" — and read as a refusal rather than a
-    prompt. The user reported pressing Enter, seeing that, and concluding the switch had been
-    rejected. "Try anyway" was the worst of it: it describes a dead end, not a next step.
-
-    The risk still has to be stated, so it follows the instruction rather than replacing it.
-    """
-    if row.confirmation is Confirmation.UNVERIFIED_DESTINATION:
-        return "Press Enter again to switch — unverified, the screen may go blank"
-    return "Press Enter again to switch — this monitor will stop showing this machine"
-
-
 class PickerModel:
     """Filtering, selection and confirmation state for the popup picker."""
 
@@ -143,15 +119,12 @@ class PickerModel:
         monitors: Sequence[KeyedMonitor],
         *,
         confirm_switch: bool = True,
-        require_confirmation: bool = True,
     ) -> None:
         self._confirm_switch = confirm_switch
-        self._require_confirmation = require_confirmation
         self._all_rows = self._build_rows(monitors)
         self._query = ""
         self._rows = tuple(self._all_rows)
         self._selected = 0
-        self._armed: PickerRow | None = None
 
     def _build_rows(self, monitors: Sequence[KeyedMonitor]) -> tuple[PickerRow, ...]:
         # Badge only when it carries information: with one monitor it is noise on every row.
@@ -194,38 +167,13 @@ class PickerModel:
         return self._rows[self._selected]
 
     @property
-    def arms_before_switching(self) -> bool:
-        """Whether activation ever asks for a second Enter.
-
-        Exposed so a front-end building its own rows reports the same behaviour the model
-        will actually take, rather than inferring it and getting it wrong.
-        """
-        return self._require_confirmation
-
-    @property
-    def armed_row(self) -> PickerRow | None:
-        """The row awaiting a second Enter, if any."""
-        return self._armed
-
-    def is_armed(self, row: PickerRow) -> bool:
-        return self._armed is not None and self._armed == row
-
-    def warning_for(self, row: PickerRow) -> str | None:
-        """The warning to display in place of ``row``'s normal text, if it is armed."""
-        return _warning_for(row) if self.is_armed(row) else None
-
-    @property
     def is_empty(self) -> bool:
         return not self._rows
 
     # -- interaction ------------------------------------------------------
 
     def set_query(self, query: str) -> None:
-        """Filter the rows. Every whitespace-separated term must match somewhere.
-
-        Changing the filter disarms: the row under the cursor may now be a different one, and
-        an armed confirmation must never carry over to a row the user did not arm.
-        """
+        """Filter the rows. Every whitespace-separated term must match somewhere."""
         self._query = query
         terms = query.lower().split()
         if terms:
@@ -236,51 +184,31 @@ class PickerModel:
             self._rows = tuple(self._all_rows)
 
         self._selected = 0
-        self._armed = None
 
     def move(self, delta: int) -> None:
-        """Move the selection, clamped to the list. Disarms, for the same reason as filtering."""
+        """Move the selection, clamped to the list."""
         if not self._rows:
             self._selected = 0
-            self._armed = None
             return
         self._selected = max(0, min(len(self._rows) - 1, self._selected + delta))
-        self._armed = None
 
-    def select(self, index: int, *, preserve_arm: bool = False) -> None:
-        """Select by index, e.g. from a mouse click. Disarms by default.
-
-        ``preserve_arm`` exists for a caller that is *addressing* a row rather than moving
-        the user's cursor to it -- a launcher resolving a returned action by bus and code,
-        where the selection is a lookup, not a choice. Without it, selecting the row in order
-        to activate it would clear its own arming and the second Enter could never switch:
-        the row would re-arm forever.
-
-        Never pass it for an actual user movement; dropping a pending confirmation when the
-        user moves is what stops a stale armed row being satisfied by an unrelated Enter.
-        """
+    def select(self, index: int) -> None:
+        """Select by index, e.g. from a mouse click or a launcher resolving a row."""
         if 0 <= index < len(self._rows):
             self._selected = index
-            if not preserve_arm:
-                self._armed = None
-
-    def disarm(self) -> None:
-        """Drop any pending confirmation."""
-        self._armed = None
 
     def activate(self) -> Activation:
         """Press Enter on the selected row.
 
-        First press on a row that needs confirmation arms it and returns
-        :attr:`ActivationKind.ARM`; the second press on the *same* row returns
-        :attr:`ActivationKind.SWITCH`. A row needing no confirmation switches immediately.
+        Switches immediately (ADR-0017). The only refusal left is a monitor whose current
+        input could not be read: that is not a confirmation step but an inability to assess
+        the consequences at all, so it fails closed (ADR-0013).
         """
         row = self.selected
         if row is None:
             return Activation(kind=ActivationKind.NOTHING)
 
         if row.is_blocked:
-            self._armed = None
             return Activation(
                 kind=ActivationKind.BLOCKED,
                 row=row,
@@ -290,19 +218,7 @@ class PickerModel:
                 ),
             )
 
-        if not self._require_confirmation or not row.needs_confirmation:
-            # ``require_confirmation=False`` makes the first Enter switch, warnings and all.
-            # The graphical front-ends pass it at the user's explicit request (ADR-0017);
-            # the row still shows its provenance, there is simply no second keypress.
-            self._armed = None
-            return Activation(kind=ActivationKind.SWITCH, row=row)
-
-        if self.is_armed(row):
-            self._armed = None
-            return Activation(kind=ActivationKind.SWITCH, row=row)
-
-        self._armed = row
-        return Activation(kind=ActivationKind.ARM, row=row, message=_warning_for(row))
+        return Activation(kind=ActivationKind.SWITCH, row=row)
 
     # -- rendering helpers -------------------------------------------------
 
@@ -312,31 +228,25 @@ class PickerModel:
             return f"[{row.badge}] {row.label}"
         return row.label
 
-    def rows_with_state(self) -> tuple[tuple[PickerRow, bool, str | None], ...]:
-        """Visible rows paired with whether each is selected, and its armed warning."""
-        return tuple(
-            (row, index == self._selected, self.warning_for(row))
-            for index, row in enumerate(self._rows)
-        )
+    def rows_with_state(self) -> tuple[tuple[PickerRow, bool], ...]:
+        """Visible rows paired with whether each is selected."""
+        return tuple((row, index == self._selected) for index, row in enumerate(self._rows))
 
     def without_row(self, row: PickerRow) -> PickerModel:
         """A copy with ``row``'s input dropped. Used after a switch removes the old host."""
         remaining = tuple(r for r in self._all_rows if r != row)
         clone = PickerModel.__new__(PickerModel)
         clone._confirm_switch = self._confirm_switch
-        clone._require_confirmation = self._require_confirmation
         clone._all_rows = remaining
         clone._query = ""
         clone._rows = remaining
         clone._selected = 0
-        clone._armed = None
         return clone
 
     def with_confirmation_preference(self, confirm_switch: bool) -> PickerModel:
         """A copy whose rows are re-evaluated against a different preference."""
         clone = PickerModel.__new__(PickerModel)
         clone._confirm_switch = confirm_switch
-        clone._require_confirmation = self._require_confirmation
         clone._all_rows = tuple(
             replace(
                 row,
@@ -348,6 +258,5 @@ class PickerModel:
         )
         clone._query = self._query
         clone._selected = 0
-        clone._armed = None
         clone.set_query(self._query)
         return clone

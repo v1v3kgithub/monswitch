@@ -4,7 +4,7 @@ Design decisions for monswitch. These are the authoritative design record — th
 supersede any older sketch in `README.md` or the agent docs. Domain vocabulary lives in
 [`../CONTEXT.md`](../CONTEXT.md).
 
-Read 0009 through 0017 before writing code: they carry the safety-critical rules and they
+Read 0009 through 0018 before writing code: they carry the safety-critical rules and they
 amend several of the earlier eight.
 
 | ADR | Decision | Status | Relations |
@@ -20,12 +20,13 @@ amend several of the earlier eight.
 | [0009](0009-input-provenance-and-trust-tiers.md) | Input provenance (`confirmed`/`live`/`reported`/`guessed`) and trust-tiered confirmation | **Superseded in part** | Refines 0001, 0002, 0008; superseded in part by 0015 |
 | [0010](0010-sysfs-first-monitor-resolution.md) | Resolve monitors from sysfs; `ddcutil detect` is the fallback | **Superseded in part** | Supersedes in part 0003; superseded in part by 0016 |
 | [0011](0011-graphical-disambiguation-and-failure-surfacing.md) | Explicit interaction strategy; typed errors rendered per frontend | Accepted | Refines 0006, 0008 |
-| [0012](0012-packaging-and-module-resolution.md) | Extension-directory install with path wiring; no import-time side effects | Accepted | Refines 0005 |
+| [0012](0012-packaging-and-module-resolution.md) | Extension-directory install with path wiring; no import-time side effects | **Superseded in part** | Refines 0005; superseded in part by 0016, 0018 |
 | [0013](0013-identity-host-input-and-target-resolution.md) | Host Input derived not stored; identity fallback chain; `set` arity | Accepted | Supersedes in part 0007; refines 0004, 0010 |
 | [0014](0014-report-only-what-the-monitor-says.md) | No speculative input rows; config is opt-in | Accepted | Supersedes in part 0001, 0007; refines 0009 |
 | [0015](0015-confirm-replaces-learn.md) | `learn` withdrawn as unbuildable; `confirm` records the user's assertion | Accepted | Supersedes in part 0001, 0009 |
 | [0016](0016-cached-capabilities-on-the-launcher-path.md) | `capabilities` on the launcher path, cached by monitor identity | Accepted | Supersedes in part 0010; refines 0012, 0014 |
 | [0017](0017-single-enter-in-the-graphical-front-ends.md) | Single Enter in the picker and launcher; no confirmation step | Accepted | Supersedes in part 0002, 0008, 0009 (graphical only) |
+| [0018](0018-remove-the-arming-machinery.md) | Delete the arming code left unused by 0017 | Accepted | Follows 0017; supersedes in part 0008, 0012 |
 
 ## The safety spine
 
@@ -38,7 +39,8 @@ Five decisions carry the weight, because `setvcp 60` cannot be undone from softw
 - **0013** — the Host Input is derived from a live read and never stored; no live read means no
   switch. Identity collisions discard confirmed maps rather than misapply them.
 - **0012** — a snapshot-rendered marker is provisional, so stale state cannot make a switch
-  look safe.
+  look safe. **Note:** inert since ADR-0018; the verdict is computed but the graphical
+  front-ends no longer act on it.
 - **0014** — nothing speculative is ever offered as a destination, so the warning in 0009 is
   spent only on rows the monitor itself reported.
 

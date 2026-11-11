@@ -30,11 +30,14 @@ that keeps `isatty()` out of the core (ADR-0011), the `set` arity rule (ADR-0013
 `monswitch set --dry-run`, the write path behind its confirmation gate (`switching.py`), and
 the GTK popup picker (`monswitch` with no arguments).
 
-The picker's logic — filtering, selection, and the arming machinery — lives in
-`core/picker.py` and is tested without a display. Both graphical front-ends now pass
-`require_confirmation=False`, so **Enter switches on the first press** (ADR-0017, taken at the
-user's explicit request against the recommendation). The arming code remains the default for
-any other caller, and the CLI is unchanged. `gtk_picker.py` holds
+The picker's logic — filtering and selection — lives in `core/picker.py` and is tested
+without a display. **Enter switches on the first press** in both graphical front-ends
+(ADR-0017, at the user's explicit request against the recommendation), and ADR-0018 deleted
+the arming machinery that used to provide the confirmation. `activate()` now returns only
+`SWITCH`, `BLOCKED` (unreadable monitor — fail closed, ADR-0013) or `NOTHING`.
+
+The confirmation *policy* is untouched: `switch_confirmation` still computes the verdict, rows
+still show `unverified`, and **the CLI still confirms** and still needs `--yes` / `--force`. `gtk_picker.py` holds
 widgets and key events only, and the Ulauncher extension is meant to reuse the same model.
 
 **Never launch the picker from an agent session.** `Gtk.main()` blocks, and the window appears

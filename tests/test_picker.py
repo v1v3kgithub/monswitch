@@ -206,170 +206,7 @@ class SelectionTest(unittest.TestCase):
         self.assertEqual(self.model.selected_index, 0)
 
 
-class ActivationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.model = PickerModel([keyed()])
-
-    def test_active_input_switches_immediately(self) -> None:
-        """Choosing the current input is a no-op; nothing to confirm."""
-        self.model.select(0)
-
-        activation = self.model.activate()
-
-        self.assertEqual(activation.kind, ActivationKind.SWITCH)
-        self.assertEqual(activation.row.source.code, 0x13)
-
-    def test_confirmed_input_arms_first(self) -> None:
-        """ADR-0002: leaving this machine needs a deliberate second act."""
-        self.model.select(1)
-
-        first = self.model.activate()
-
-        self.assertEqual(first.kind, ActivationKind.ARM)
-        self.assertIn("Press Enter again", first.message)
-        self.assertEqual(self.model.armed_row, self.model.rows[1])
-
-    def test_second_enter_switches(self) -> None:
-        self.model.select(1)
-        self.model.activate()
-
-        second = self.model.activate()
-
-        self.assertEqual(second.kind, ActivationKind.SWITCH)
-        self.assertIsNone(self.model.armed_row)
-
-    def test_unverified_input_gets_a_specific_warning(self) -> None:
-        model = PickerModel([keyed(HP, USBC, JUNK)])
-        model.select(1)
-
-        activation = model.activate()
-
-        self.assertEqual(activation.kind, ActivationKind.ARM)
-        self.assertIn("unverified", activation.message)
-        self.assertIn("go blank", activation.message)
-
-    def test_warnings_lead_with_the_action_not_the_risk(self) -> None:
-        """A prompt that opens with the danger reads as a refusal; the user hit exactly that."""
-        model = PickerModel([keyed(HP, USBC, DESKTOP, JUNK)])
-
-        for index in (1, 2):
-            with self.subTest(index=index):
-                model.select(index)
-                message = model.activate().message
-
-                self.assertTrue(message.startswith("Press Enter again to switch"), message)
-                self.assertNotIn("try anyway", message)
-
-    def test_blocked_monitor_never_arms_or_switches(self) -> None:
-        model = PickerModel([keyed(HP, USBC, DESKTOP, host_input=None)])
-        model.select(1)
-
-        activation = model.activate()
-
-        self.assertEqual(activation.kind, ActivationKind.BLOCKED)
-        self.assertIsNone(model.armed_row)
-        self.assertIn("could not be read", activation.message)
-
-    def test_blocked_stays_blocked_on_a_second_enter(self) -> None:
-        model = PickerModel([keyed(HP, USBC, DESKTOP, host_input=None)])
-        model.select(1)
-
-        model.activate()
-        again = model.activate()
-
-        self.assertEqual(again.kind, ActivationKind.BLOCKED)
-
-    def test_activating_nothing_is_harmless(self) -> None:
-        self.model.set_query("zzzz")
-
-        self.assertEqual(self.model.activate().kind, ActivationKind.NOTHING)
-
-    def test_opt_out_removes_the_arming_step_for_verified_inputs(self) -> None:
-        model = PickerModel([keyed()], confirm_switch=False)
-        model.select(1)
-
-        self.assertEqual(model.activate().kind, ActivationKind.SWITCH)
-
-    def test_opt_out_does_not_remove_it_for_unverified_inputs(self) -> None:
-        """ADR-0009: confirm_switch = false never covers a guessed code."""
-        model = PickerModel([keyed(HP, USBC, JUNK)], confirm_switch=False)
-        model.select(1)
-
-        self.assertEqual(model.activate().kind, ActivationKind.ARM)
-
-
-class DisarmingTest(unittest.TestCase):
-    """When a pending confirmation must be dropped.
-
-    Each case is a way the user could otherwise press Enter and switch a row they never armed.
-    """
-
-    def setUp(self) -> None:
-        self.model = PickerModel([keyed()])
-        self.model.select(1)
-        self.model.activate()
-        self.assertIsNotNone(self.model.armed_row)
-
-    def test_moving_disarms(self) -> None:
-        self.model.move(1)
-
-        self.assertIsNone(self.model.armed_row)
-
-    def test_moving_back_does_not_restore_arming(self) -> None:
-        self.model.move(1)
-        self.model.move(-1)
-
-        self.assertIsNone(self.model.armed_row)
-        self.assertEqual(self.model.activate().kind, ActivationKind.ARM)
-
-    def test_filtering_disarms(self) -> None:
-        self.model.set_query("desktop")
-
-        self.assertIsNone(self.model.armed_row)
-
-    def test_clicking_another_row_disarms(self) -> None:
-        self.model.select(2)
-
-        self.assertIsNone(self.model.armed_row)
-
-    def test_explicit_disarm(self) -> None:
-        self.model.disarm()
-
-        self.assertIsNone(self.model.armed_row)
-
-    def test_disarmed_row_needs_arming_again(self) -> None:
-        self.model.disarm()
-
-        self.assertEqual(self.model.activate().kind, ActivationKind.ARM)
-
-    def test_only_the_armed_row_is_armed(self) -> None:
-        armed = self.model.armed_row
-
-        for row in self.model.rows:
-            with self.subTest(code=row.source.code):
-                self.assertEqual(self.model.is_armed(row), row == armed)
-
-    def test_warning_is_shown_only_for_the_armed_row(self) -> None:
-        warnings = [warning for _row, _sel, warning in self.model.rows_with_state()]
-
-        self.assertEqual(len([w for w in warnings if w]), 1)
-
-
 class RenderingTest(unittest.TestCase):
-    def test_rows_with_state_marks_the_selection(self) -> None:
-        model = PickerModel([keyed()])
-        model.select(1)
-
-        states = model.rows_with_state()
-
-        self.assertEqual([selected for _row, selected, _w in states], [False, True, False])
-
-    def test_confirmation_preference_can_be_changed(self) -> None:
-        model = PickerModel([keyed()]).with_confirmation_preference(False)
-        model.select(1)
-
-        self.assertEqual(model.activate().kind, ActivationKind.SWITCH)
-
     def test_row_confirmation_matches_the_policy(self) -> None:
         model = PickerModel([keyed()])
 
@@ -393,66 +230,97 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class SingleEnterTest(unittest.TestCase):
-    """`require_confirmation=False`: the first Enter switches (ADR-0017).
+class ActivationTest(unittest.TestCase):
+    """Enter switches (ADR-0017), and the arming that used to precede it is gone (ADR-0018)."""
 
-    This is what both graphical front-ends now pass, at the user's explicit request. The
-    arming machinery stays in the model and keeps its own tests, because it is still the
-    default and still correct for anything that wants it.
-    """
+    def setUp(self) -> None:
+        self.model = PickerModel([keyed()])
 
-    def model(self) -> PickerModel:
-        return PickerModel([keyed()], require_confirmation=False)
+    def test_switches_on_the_first_activation(self) -> None:
+        self.model.select(1)
 
-    def test_leaving_the_host_switches_immediately(self) -> None:
-        subject = self.model()
-        subject.select(1)
+        activation = self.model.activate()
 
-        self.assertEqual(subject.activate().kind, ActivationKind.SWITCH)
+        self.assertEqual(activation.kind, ActivationKind.SWITCH)
+        self.assertEqual(activation.row.source.code, 0x0F)
 
-    def test_unverified_input_switches_immediately(self) -> None:
-        """The warning is still shown on the row; it just no longer costs a keypress."""
-        subject = PickerModel([keyed(HP, USBC, JUNK)], require_confirmation=False)
-        subject.select(1)
-
-        self.assertEqual(subject.activate().kind, ActivationKind.SWITCH)
-
-    def test_nothing_is_ever_armed(self) -> None:
-        subject = self.model()
+    def test_every_row_switches_regardless_of_provenance(self) -> None:
+        """A confirmed, a live and an unverified input all behave the same way now."""
+        subject = PickerModel([keyed(HP, USBC, DESKTOP, HDMI, JUNK)])
 
         for index in range(len(subject.rows)):
-            with self.subTest(index=index):
+            with self.subTest(code=subject.rows[index].source.hex_code):
                 subject.select(index)
-                subject.activate()
-                self.assertIsNone(subject.armed_row)
+                self.assertEqual(subject.activate().kind, ActivationKind.SWITCH)
+
+    def test_repeated_activation_keeps_switching(self) -> None:
+        """No state accumulates between presses, so the second is not a different answer."""
+        self.model.select(1)
+
+        self.assertEqual(self.model.activate().kind, ActivationKind.SWITCH)
+        self.assertEqual(self.model.activate().kind, ActivationKind.SWITCH)
 
     def test_an_unreadable_monitor_is_still_refused(self) -> None:
-        """Fail-closed is not a confirmation step, so removing confirmation must not lose it."""
-        subject = PickerModel(
-            [keyed(HP, USBC, DESKTOP, host_input=None)], require_confirmation=False
-        )
+        """Fail-closed is not a confirmation step, so removing confirmation kept it."""
+        subject = PickerModel([keyed(HP, USBC, DESKTOP, host_input=None)])
         subject.select(1)
+
+        activation = subject.activate()
+
+        self.assertEqual(activation.kind, ActivationKind.BLOCKED)
+        self.assertIn("could not be read", activation.message)
+
+    def test_blocked_stays_blocked_when_pressed_again(self) -> None:
+        subject = PickerModel([keyed(HP, USBC, DESKTOP, host_input=None)])
+        subject.select(1)
+
+        subject.activate()
 
         self.assertEqual(subject.activate().kind, ActivationKind.BLOCKED)
 
-    def test_rows_still_carry_their_provenance(self) -> None:
-        """Removing the keypress must not remove the information."""
-        subject = self.model()
+    def test_activating_nothing_is_harmless(self) -> None:
+        self.model.set_query("zzzz")
 
-        notes = [row.status_note() for row in subject.rows]
+        self.assertEqual(self.model.activate().kind, ActivationKind.NOTHING)
 
-        self.assertIn("unverified", notes)
+    def test_no_arm_kind_exists(self) -> None:
+        """ADR-0018: the kind itself is gone, so no caller can branch on it."""
+        self.assertEqual({kind.value for kind in ActivationKind}, {"switch", "blocked", "nothing"})
+
+    def test_the_verdict_is_still_computed(self) -> None:
+        """The policy still knows the switch is irreversible; the picker just does not ask.
+
+        It is what the row's note is drawn from, and what the CLI still acts on.
+        """
+        by_code = {row.source.code: row.confirmation for row in self.model.rows}
+
+        self.assertEqual(by_code[0x13], Confirmation.NONE)
+        self.assertEqual(by_code[0x0F], Confirmation.LEAVING_HOST)
+        self.assertEqual(by_code[0x11], Confirmation.UNVERIFIED_DESTINATION)
+
+    def test_provenance_is_still_reported(self) -> None:
+        notes = [row.status_note() for row in self.model.rows]
+
         self.assertIn("current", notes)
+        self.assertIn("unverified", notes)
 
-    def test_the_confirmation_verdict_is_unchanged(self) -> None:
-        """The policy still knows the switch is irreversible; the UI just does not ask."""
-        subject = self.model()
 
-        self.assertEqual(subject.rows[1].confirmation, Confirmation.LEAVING_HOST)
-        self.assertTrue(subject.rows[1].needs_confirmation)
-
-    def test_arming_remains_the_default(self) -> None:
+class RowStateTest(unittest.TestCase):
+    def test_rows_with_state_marks_the_selection(self) -> None:
         subject = PickerModel([keyed()])
         subject.select(1)
 
-        self.assertEqual(subject.activate().kind, ActivationKind.ARM)
+        states = subject.rows_with_state()
+
+        self.assertEqual([selected for _row, selected in states], [False, True, False])
+
+    def test_rows_with_state_is_a_pair_per_row(self) -> None:
+        """The third element was the armed warning and no longer exists."""
+        subject = PickerModel([keyed()])
+
+        self.assertTrue(all(len(entry) == 2 for entry in subject.rows_with_state()))
+
+    def test_confirmation_preference_still_changes_the_verdicts(self) -> None:
+        subject = PickerModel([keyed()]).with_confirmation_preference(False)
+
+        self.assertEqual(subject.rows[1].confirmation, Confirmation.NONE)

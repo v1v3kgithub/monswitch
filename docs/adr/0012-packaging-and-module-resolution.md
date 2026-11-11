@@ -4,6 +4,10 @@
 > **Refines:** [ADR-0005](0005-direct-python-import-for-extension.md)
 
 > ADR-0005 chose direct import but did not say how the module becomes importable.
+>
+> Two parts are superseded: ADR-0016 puts `capabilities` on the launcher path through a cache,
+> and ADR-0018 makes the provisional stale-snapshot marker inert — the verdict is still
+> computed, but no graphical front-end acts on it now that arming is gone.
 
 ADR-0005 decided the Ulauncher extension imports the core directly
 (`from monswitch.core import ...`) rather than shelling out to the CLI, on the grounds that the

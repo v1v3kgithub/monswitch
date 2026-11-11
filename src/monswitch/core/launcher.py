@@ -18,9 +18,10 @@ untrusted: its rows are treated as unverified until a fresh read lands (ADR-0012
 an extra confirmation on a cold cache; the alternative is switching away from the host without
 a warning because the cache said something no longer true.
 
-Confirmation itself reuses :class:`~monswitch.core.picker.PickerModel`'s two-step arming, so
-the launcher and the GTK picker cannot drift apart on the one behaviour where drifting is
-dangerous.
+Activation goes through :class:`~monswitch.core.picker.PickerModel` so the launcher and the
+GTK picker cannot drift apart on it. Neither confirms any more (ADR-0017), and the arming that
+used to provide the confirmation is gone (ADR-0018); a monitor whose current input cannot be
+read is still refused.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from dataclasses import dataclass, field
 from enum import Enum, unique
 
 from .discovery import Discovery
-from .models import Confirmation, KeyedMonitor
+from .models import KeyedMonitor
 from .picker import ActivationKind, PickerModel, PickerRow
 
 __all__ = [
@@ -58,10 +59,7 @@ class ActionKind(Enum):
     """What activating a row should do."""
 
     SWITCH = "switch"
-    """Perform the switch now. Either harmless, or already confirmed."""
-
-    ARM = "arm"
-    """Re-render with this row asking for confirmation."""
+    """Perform the switch now."""
 
     BLOCKED = "blocked"
     """Refuse: the monitor's current input is unknown (ADR-0013)."""
@@ -117,20 +115,14 @@ class LauncherItem:
     title: str
     subtitle: str
     action: ItemAction
-    is_warning: bool = False
 
     @property
     def selectable(self) -> bool:
         return self.action.kind is not ActionKind.NOTHING
 
 
-def _subtitle_for(row: PickerRow, *, armed: bool, snapshot_stale: bool) -> str:
+def _subtitle_for(row: PickerRow, *, snapshot_stale: bool) -> str:
     parts: list[str] = [row.monitor.display_name]
-
-    if armed:
-        if row.confirmation is Confirmation.UNVERIFIED_DESTINATION:
-            return "Press Enter again to switch — unverified, the screen may go blank"
-        return "Press Enter again to switch — this monitor will stop showing this machine"
 
     if row.is_blocked:
         parts.append("current input unreadable; cannot switch")
@@ -171,20 +163,12 @@ def build_items(
 
     items: list[LauncherItem] = []
     for row in rows:
-        armed = model.is_armed(row)
-        if row.is_blocked:
-            kind = ActionKind.BLOCKED
-        elif armed or not row.needs_confirmation or not model.arms_before_switching:
-            kind = ActionKind.SWITCH
-        else:
-            kind = ActionKind.ARM
-
+        kind = ActionKind.BLOCKED if row.is_blocked else ActionKind.SWITCH
         items.append(
             LauncherItem(
                 title=model.display_text(row),
-                subtitle=_subtitle_for(row, armed=armed, snapshot_stale=snapshot_stale),
+                subtitle=_subtitle_for(row, snapshot_stale=snapshot_stale),
                 action=ItemAction(kind=kind, bus=row.monitor.bus, code=row.source.code),
-                is_warning=armed,
             )
         )
     return tuple(items)
@@ -196,19 +180,15 @@ def resolve_action(
     """Apply a returned action to the model, by bus and code rather than by position.
 
     Returns what the launcher should do next, mirroring
-    :meth:`~monswitch.core.picker.PickerModel.activate` so the arming behaviour is shared
-    rather than reimplemented.
+    :meth:`~monswitch.core.picker.PickerModel.activate` so the behaviour is shared rather
+    than reimplemented.
     """
     if action.bus is None or action.code is None:
         return ActivationKind.NOTHING, None
 
-    armed = model.armed_row
     for index, row in enumerate(model.rows):
         if row.monitor.bus == action.bus and row.source.code == action.code:
-            # Selecting here is a lookup, not a user movement, so it must not clear this
-            # row's own arming -- otherwise the second Enter re-arms instead of switching
-            # and a confirmed switch is unreachable from a launcher.
-            model.select(index, preserve_arm=armed == row)
+            model.select(index)
             activation = model.activate()
             return activation.kind, activation.row
 
@@ -265,9 +245,7 @@ class DiscoverySnapshot:
         """Force the next :meth:`get` to refresh. Call after a switch."""
         self._fetched_at = 0.0
 
-    def model(
-        self, *, confirm_switch: bool = True, require_confirmation: bool = True
-    ) -> PickerModel:
+    def model(self, *, confirm_switch: bool = True) -> PickerModel:
         """A :class:`PickerModel` over the current result.
 
         :meth:`get` refreshes first, so data that was stale but refreshed successfully is
@@ -279,11 +257,7 @@ class DiscoverySnapshot:
         result = self.get()
         monitors: Sequence[KeyedMonitor] = result.monitors
         trusted = not self.is_stale
-        return PickerModel(
-            monitors,
-            confirm_switch=confirm_switch if trusted else True,
-            require_confirmation=require_confirmation,
-        )
+        return PickerModel(monitors, confirm_switch=confirm_switch if trusted else True)
 
 
 @dataclass
@@ -294,38 +268,29 @@ class LauncherSession:
     kinds of event — a query, and an item being activated — and the model must be reached
     differently for each:
 
-    * a **query** applies :meth:`~monswitch.core.picker.PickerModel.set_query`, which drops any
-      pending confirmation. That is correct: typing something new should cancel an armed row.
-    * an **activation** must *not* touch the query, because ``set_query`` disarms. Routing
-      Enter through it meant every press re-armed the row and nothing ever switched — the
-      confirmation was unreachable, with the user pressing Enter repeatedly to no effect.
+    * a **query** applies :meth:`~monswitch.core.picker.PickerModel.set_query` and resets the
+      selection to the first row.
+    * an **activation** resolves a row by bus and code and must *not* re-query, which would
+      move the selection out from under it.
 
-    Keeping both paths here, rather than in the extension, is what makes the distinction
-    testable without a launcher daemon.
+    The split mattered more when a confirmation could be armed: routing Enter through the
+    query path cleared the arming, so every press re-armed and nothing ever switched. Arming
+    is gone (ADR-0018), but keeping the paths distinct is still right, and keeping them here
+    rather than in the extension is what makes them testable without a launcher daemon.
     """
 
     snapshot: DiscoverySnapshot
     confirm_switch: bool = True
-    require_confirmation: bool = True
-    """``False`` makes the first Enter switch, as the user asked for (ADR-0017)."""
-
     _model: PickerModel | None = field(default=None, init=False, repr=False)
 
     def _ensure_model(self) -> PickerModel:
-        """The current model, rebuilt when the snapshot has moved on.
-
-        A rebuild drops any armed row, which is the safe direction: the confirmation was
-        armed against data that has since changed.
-        """
+        """The current model, rebuilt when the snapshot has moved on."""
         if self._model is None or self.snapshot.is_stale:
-            self._model = self.snapshot.model(
-                confirm_switch=self.confirm_switch,
-                require_confirmation=self.require_confirmation,
-            )
+            self._model = self.snapshot.model(confirm_switch=self.confirm_switch)
         return self._model
 
     def items_for(self, query: str) -> tuple[LauncherItem, ...]:
-        """Rows for a query. Changing the query cancels any pending confirmation."""
+        """Rows for a query."""
         model = self._ensure_model()
         model.set_query(query)
         return build_items(
@@ -337,17 +302,11 @@ class LauncherSession:
         )
 
     def activate(self, action: ItemAction) -> tuple[ActivationKind, PickerRow | None]:
-        """Apply an activation, leaving the query and any arming untouched.
+        """Apply an activation, leaving the query untouched.
 
-        Deliberately does not call :meth:`items_for`: that would disarm the row this
-        activation is meant to confirm.
+        Deliberately does not call :meth:`items_for`, which would reset the selection.
         """
         return resolve_action(self._ensure_model(), action)
-
-    def rerender(self) -> tuple[LauncherItem, ...]:
-        """Re-render the current rows without changing the query — e.g. after arming."""
-        model = self._ensure_model()
-        return build_items(model, snapshot_stale=self.snapshot.is_stale)
 
     def invalidate(self) -> None:
         """Drop the cached model and force the snapshot to refresh. Call after a switch."""

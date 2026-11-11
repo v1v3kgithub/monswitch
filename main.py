@@ -143,8 +143,6 @@ class MonswitchExtension(Extension):
             self._session = LauncherSession(
                 snapshot=self.snapshot(),
                 confirm_switch=self.config().confirm_switch,
-                # One Enter switches, at the user's explicit request (ADR-0017).
-                require_confirmation=False,
             )
         return self._session
 
@@ -223,11 +221,6 @@ class EnterListener(EventListener):
                 "so switching is disabled"
             )
 
-        if kind is ActivationKind.ARM:
-            # Re-render with the row asking for confirmation, keeping the window open and the
-            # query untouched -- re-querying here would disarm it immediately.
-            return _render(session.rerender())
-
         config = extension.config()
         try:
             switch_input(
@@ -236,7 +229,7 @@ class EnterListener(EventListener):
                 ddcutil=WriteCapableDdcutil(),
                 strategy=_AlreadyConfirmed(),
                 confirm_switch=config.confirm_switch,
-                # The second Enter was the confirmation, given against the specific warning.
+                # The launcher does not confirm; Enter is the whole interaction (ADR-0017).
                 assume_yes=True,
                 force=True,
             )
@@ -248,10 +241,10 @@ class EnterListener(EventListener):
 
 
 class _AlreadyConfirmed:
-    """The launcher's second Enter is the confirmation, so nothing may ask again.
+    """The launcher does not confirm (ADR-0017), so nothing should ever ask.
 
-    Fails loudly rather than approving, because any call here would mean the arming step was
-    bypassed.
+    Fails loudly rather than approving: a call here would mean a confirmation path was
+    reached that this front-end does not implement.
     """
 
     def choose(self, query, choices):

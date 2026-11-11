@@ -61,7 +61,6 @@ CSS = b"""
 .monswitch-badge { opacity: 0.65; font-size: 90%; }
 .monswitch-note { opacity: 0.6; font-size: 85%; }
 .monswitch-note-current { opacity: 0.9; font-weight: bold; }
-.monswitch-warning { color: #d33; font-weight: bold; }
 .monswitch-message { padding: 8px; }
 .monswitch-close { padding: 0 10px; opacity: 0.6; }
 .monswitch-footer { opacity: 0.45; font-size: 85%; padding: 6px; }
@@ -93,10 +92,9 @@ def run_picker(
         Gtk,
     )
 
-    # require_confirmation=False: one Enter switches. Asked for explicitly by the user
-    # (ADR-0017), after the two-step behaviour of ADR-0008 was found too slow in practice.
-    # Rows still show provenance, and an unreadable monitor is still refused outright.
-    model = PickerModel(monitors, confirm_switch=config.confirm_switch, require_confirmation=False)
+    # One Enter switches (ADR-0017). Rows still show provenance, and an unreadable monitor
+    # is still refused outright.
+    model = PickerModel(monitors, confirm_switch=config.confirm_switch)
     writer = ddcutil or WriteCapableDdcutil()
     outcome = PickerResult(cancelled=True)
 
@@ -168,7 +166,7 @@ def run_picker(
         else:
             message_label.hide()
 
-    def build_row(row: PickerRow, warning: str | None) -> Gtk.Widget:
+    def build_row(row: PickerRow) -> Gtk.Widget:
         line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         line.set_margin_top(6)
         line.set_margin_bottom(6)
@@ -183,27 +181,19 @@ def run_picker(
         code.get_style_context().add_class("monswitch-badge")
         line.pack_start(code, False, False, 0)
 
-        # The input's name always stays visible. The first version replaced it with the
-        # warning, so an armed row showed no indication of *what* was about to be switched to
-        # -- which made the prompt read as an error about the row.
         text = Gtk.Label(label=model.display_text(row), xalign=0.0)
         text.get_style_context().add_class("monswitch-row-label")
         line.pack_start(text, False, False, 0)
 
-        if warning:
-            warning_label = Gtk.Label(label=warning, xalign=0.0)
-            warning_label.get_style_context().add_class("monswitch-warning")
-            line.pack_start(warning_label, True, True, 0)
-        else:
-            # A spacer keeps the note right-aligned whether or not a warning is showing.
-            line.pack_start(Gtk.Label(label=""), True, True, 0)
+        # A spacer keeps the note right-aligned.
+        line.pack_start(Gtk.Label(label=""), True, True, 0)
 
-            note = row.status_note()
-            if note:
-                note_label = Gtk.Label(label=note, xalign=1.0)
-                style = note_label.get_style_context()
-                style.add_class("monswitch-note-current" if row.is_active else "monswitch-note")
-                line.pack_end(note_label, False, False, 0)
+        note = row.status_note()
+        if note:
+            note_label = Gtk.Label(label=note, xalign=1.0)
+            style = note_label.get_style_context()
+            style.add_class("monswitch-note-current" if row.is_active else "monswitch-note")
+            line.pack_end(note_label, False, False, 0)
 
         container = Gtk.ListBoxRow()
         container.add(line)
@@ -212,8 +202,8 @@ def run_picker(
     def refresh() -> None:
         for child in listbox.get_children():
             listbox.remove(child)
-        for row, _selected, warning in model.rows_with_state():
-            listbox.add(build_row(row, warning))
+        for row, _selected in model.rows_with_state():
+            listbox.add(build_row(row))
         listbox.show_all()
 
         if model.is_empty:
@@ -234,7 +224,7 @@ def run_picker(
                 ddcutil=writer,
                 strategy=_AlreadyConfirmed(),
                 confirm_switch=config.confirm_switch,
-                # The picker's second Enter *is* the confirmation, for both tiers.
+                # The picker does not confirm (ADR-0017); Enter is the whole interaction.
                 assume_yes=True,
                 force=True,
             )
@@ -252,13 +242,6 @@ def run_picker(
         key = event.keyval  # type: ignore[attr-defined]
 
         if key == Gdk.KEY_Escape:
-            if model.armed_row is not None:
-                # Escape cancels a pending confirmation before it closes the window, so
-                # backing out of a risky switch does not also dismiss the picker.
-                model.disarm()
-                show_message(None)
-                refresh()
-                return True
             window.close()
             return True
 
@@ -276,8 +259,6 @@ def run_picker(
             activation = model.activate()
             if activation.kind is ActivationKind.SWITCH and activation.row is not None:
                 perform(activation.row)
-            elif activation.kind is ActivationKind.ARM:
-                refresh()
             elif activation.kind is ActivationKind.BLOCKED:
                 show_message(activation.message or "Cannot switch that monitor.")
                 refresh()
@@ -331,12 +312,11 @@ def run_picker(
 
 
 class _AlreadyConfirmed:
-    """Strategy for a picker that has already obtained its confirmation.
+    """Strategy for a front-end that does not confirm.
 
-    The second Enter on an armed row is the user's agreement, given in the moment and in front
-    of the specific warning, so re-asking through a strategy would be asking twice. Any call
-    here would mean the arming logic was bypassed, so it fails loudly rather than silently
-    approving.
+    The picker switches on Enter (ADR-0017), so nothing should ever ask through a strategy. A
+    call here would mean a confirmation path was reached that this front-end does not
+    implement, so it fails loudly rather than silently approving.
     """
 
     def choose(self, query: str, choices: Sequence[object]) -> object:

@@ -172,9 +172,11 @@ class WindowBehaviourTest(unittest.TestCase):
         """show_all() does not request focus; present() does."""
         self.assertIn("present_with_time", self.text)
 
-    def test_asks_for_single_enter(self) -> None:
-        """ADR-0017: one Enter switches, so the picker passes require_confirmation=False."""
-        self.assertIn("require_confirmation=False", self.text)
+    def test_no_arming_machinery_remains(self) -> None:
+        """ADR-0018 removed it; this stops it reappearing in the front-end by hand."""
+        for gone in ("armed", "disarm", "monswitch-warning", "require_confirmation"):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, self.text)
 
     def test_binds_escape(self) -> None:
         self.assertIn("Gdk.KEY_Escape", self.text)
