@@ -49,11 +49,22 @@ jobs:
 
       # The GTK-version guards (Gdk 3.0 vs 4.0) only mean something where both typelibs
       # exist, which is the configuration that broke the picker on the reference machine.
+      # Retried: this step has failed on "Temporary failure resolving
+      # 'security.ubuntu.com'" with no test having run. A red badge caused by a mirror
+      # outage is worse than no badge, because it teaches you to ignore the ones that mean
+      # something.
       - name: Install PyGObject and GTK 3
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            python3-gi gir1.2-gtk-3.0 gir1.2-gtk-4.0
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+                 python3-gi gir1.2-gtk-3.0 gir1.2-gtk-4.0; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "::error::could not install GTK packages after 3 attempts"
+          exit 1
 
       - name: Run tests against the system interpreter
         run: |
