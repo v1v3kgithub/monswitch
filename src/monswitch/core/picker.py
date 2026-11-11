@@ -121,10 +121,18 @@ class Activation:
 
 
 def _warning_for(row: PickerRow) -> str:
-    """The text the armed row shows. Names the specific risk, not a generic 'are you sure'."""
+    """The text an armed row shows beside its name.
+
+    Leads with the action, because the first version led with the risk — "Unverified input —
+    may not exist. Press Enter again to try anyway" — and read as a refusal rather than a
+    prompt. The user reported pressing Enter, seeing that, and concluding the switch had been
+    rejected. "Try anyway" was the worst of it: it describes a dead end, not a next step.
+
+    The risk still has to be stated, so it follows the instruction rather than replacing it.
+    """
     if row.confirmation is Confirmation.UNVERIFIED_DESTINATION:
-        return "Unverified input — may not exist. Press Enter again to try anyway"
-    return "Press Enter again to switch away from this machine"
+        return "Press Enter again to switch — unverified, the screen may go blank"
+    return "Press Enter again to switch — this monitor will stop showing this machine"
 
 
 class PickerModel:

@@ -245,8 +245,22 @@ class ActivationTest(unittest.TestCase):
         activation = model.activate()
 
         self.assertEqual(activation.kind, ActivationKind.ARM)
-        self.assertIn("Unverified", activation.message)
-        self.assertIn("may not exist", activation.message)
+        self.assertIn("unverified", activation.message)
+        self.assertIn("go blank", activation.message)
+
+    def test_warnings_lead_with_the_action_not_the_risk(self) -> None:
+        """A prompt that opens with the danger reads as a refusal; the user hit exactly that."""
+        model = PickerModel([keyed(HP, USBC, DESKTOP, JUNK)])
+
+        for index in (1, 2):
+            with self.subTest(index=index):
+                model.select(index)
+                message = model.activate().message
+
+                self.assertTrue(
+                    message.startswith("Press Enter again to switch"), message
+                )
+                self.assertNotIn("try anyway", message)
 
     def test_blocked_monitor_never_arms_or_switches(self) -> None:
         model = PickerModel([keyed(HP, USBC, DESKTOP, host_input=None)])

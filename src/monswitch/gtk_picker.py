@@ -183,14 +183,20 @@ def run_picker(
         code.get_style_context().add_class("monswitch-badge")
         line.pack_start(code, False, False, 0)
 
+        # The input's name always stays visible. The first version replaced it with the
+        # warning, so an armed row showed no indication of *what* was about to be switched to
+        # -- which made the prompt read as an error about the row.
+        text = Gtk.Label(label=model.display_text(row), xalign=0.0)
+        text.get_style_context().add_class("monswitch-row-label")
+        line.pack_start(text, False, False, 0)
+
         if warning:
-            text = Gtk.Label(label=warning, xalign=0.0)
-            text.get_style_context().add_class("monswitch-warning")
-            line.pack_start(text, True, True, 0)
+            warning_label = Gtk.Label(label=warning, xalign=0.0)
+            warning_label.get_style_context().add_class("monswitch-warning")
+            line.pack_start(warning_label, True, True, 0)
         else:
-            text = Gtk.Label(label=model.display_text(row), xalign=0.0)
-            text.get_style_context().add_class("monswitch-row-label")
-            line.pack_start(text, True, True, 0)
+            # A spacer keeps the note right-aligned whether or not a warning is showing.
+            line.pack_start(Gtk.Label(label=""), True, True, 0)
 
             note = row.status_note()
             if note:
