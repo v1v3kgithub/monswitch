@@ -41,6 +41,14 @@ class CliTestCase(unittest.TestCase):
         self.config = self.dir / "config.toml"
         self.config.write_text("")
 
+        # Pretend GTK is present for every CLI test. What these exercise is the CLI's
+        # wiring, not PyGObject, and without this the no-arguments path returns the
+        # install-GTK error wherever GTK is absent -- passing on a developer machine and
+        # failing in CI. A test that wants the absent case patches it back to False.
+        gtk = mock.patch("monswitch.gtk_picker.GTK_AVAILABLE", True)
+        gtk.start()
+        self.addCleanup(gtk.stop)
+
     def one_hp(self, bus: int = 16, connector: str = "card1-DP-1") -> None:
         make_connector(self.root, connector, bus=bus, edid=HP_EDID)
 
@@ -452,16 +460,9 @@ class NoArgumentsTest(CliTestCase):
     `run_picker` is patched throughout: these tests must never put a real window on the
     developer's screen, and a GTK main loop in a test suite would hang it.
 
-    `GTK_AVAILABLE` is patched too, because what is under test is the CLI's wiring rather
-    than GTK. Without that these passed only where PyGObject happened to be installed and
-    failed in CI, which is the hidden environment dependency CI exists to find.
+    `GTK_AVAILABLE` is forced on in `CliTestCase`, because what is under test is the CLI's
+    wiring rather than GTK.
     """
-
-    def setUp(self) -> None:
-        super().setUp()
-        patcher = mock.patch("monswitch.gtk_picker.GTK_AVAILABLE", True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     def test_no_monitors_fails_before_opening_a_window(self) -> None:
         """An empty popup explains nothing, so report on the terminal instead."""
